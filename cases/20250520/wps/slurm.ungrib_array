@@ -1,0 +1,24 @@
+#!/bin/bash
+# DRAFT for review -- not submitted. Parallel alternative to slurm.ungrib (which stays as
+# the serial fallback). One task per time chunk; chunks are made by
+# scripts/setup_ungrib_chunks.py, which prints the right --array range (0-24 for 73 h / 3 h).
+# Afterwards run scripts/merge_ungrib_chunks.py to move FILE:* into this directory.
+# Do NOT run both this and slurm.ungrib for the same times.
+#SBATCH --job-name=ungribA520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --array=0-24
+#SBATCH --output=ungrib_chunks/slurm.ungrib.%a.out
+
+date
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/env_wrf.sh
+CHUNK=$(printf "chunk_%02d" $SLURM_ARRAY_TASK_ID)
+cd $SLURM_SUBMIT_DIR/ungrib_chunks/$CHUNK
+echo "running $CHUNK in $PWD"
+ulimit -s unlimited
+
+srun -n 1 ./ungrib.exe
+date

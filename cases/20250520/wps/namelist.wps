@@ -1,0 +1,41 @@
+&share
+ wrf_core = 'ARW',
+ max_dom = 1,
+ start_date = '2025-05-19_00:00:00',
+ end_date   = '2025-05-22_00:00:00',
+ interval_seconds = 3600,
+ io_form_geogrid = 2
+/
+
+! Values below must match ../geog/geo_em.d01.nc (metgrid checks them against
+! the file). Copied from the geogrid/metgrid namelist of the existing sey runs
+! (test1/20250520lassobnfwrfhrrr3/metgrid-revk/namelist.wps), d01 only.
+! geogrid is NOT rerun here; geog_data_path is kept only for reference.
+&geogrid
+ parent_id         =   1,
+ parent_grid_ratio =   1,
+ i_parent_start    =   1,
+ j_parent_start    =   1,
+ e_we              =  550,
+ e_sn              =  390,
+ geog_data_res = 'topo_merit_3s+9s+15s+nlcd2006_ll_9s+default',
+ dx = 2500,
+ dy = 2500,
+ map_proj = 'lambert',
+ ref_lat   =  35.0,
+ ref_lon   = -89.50,
+ truelat1  =  35.0,
+ truelat2  =  35.0,
+ stand_lon = -88.5,
+ geog_data_path = '/gpfs/wolf2/arm/cli120/proj-shared/sey/bnf/wrf/geog_data/WPS_GEOG/'
+/
+
+&ungrib
+ out_format = 'WPS',
+ prefix = 'FILE',
+/
+
+&metgrid
+ fg_name = 'FILE',
+ constants_name = 'QNWFA_QNIFA_QNBCA_SIGMA_MONTHLY.dat'
+/

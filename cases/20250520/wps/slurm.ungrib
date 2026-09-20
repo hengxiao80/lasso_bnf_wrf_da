@@ -1,0 +1,18 @@
+#!/bin/bash
+# DRAFT for review -- not submitted. 73 hourly times x (wrfprs + wrfnat) f00.
+# sey's comparable ungrib (97 hours) took ~70 min serial.
+#SBATCH --job-name=ungrib520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=03:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --output=slurm.ungrib.out
+
+date
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/env_wrf.sh
+cd $SLURM_SUBMIT_DIR
+ulimit -s unlimited
+
+srun -n 1 ./ungrib.exe
+date

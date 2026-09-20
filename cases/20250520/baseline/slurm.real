@@ -1,0 +1,30 @@
+#!/bin/bash
+# DRAFT for review -- not submitted. Resources mirror sey's real.exe job
+# (128 ranks x 8 OpenMP threads on 8 nodes; our WRF is the same dm+sm build).
+#SBATCH --job-name=real520hyb0
+#SBATCH -A cli120
+#SBATCH --partition=priority_long
+#SBATCH --time=24:00:00
+#SBATCH --nodes=8
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.real.out
+#SBATCH --exclusive
+
+date
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/env_wrf.sh
+cd $SLURM_SUBMIT_DIR
+rm -f rsl.out.* rsl.error.*
+
+export UCX_TLS=rc,xpmem,self
+export OMP_DISPLAY_ENV=true
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+srun -n 128 --cpu_bind=cores ./real.exe
+
+mkdir -p rsls.real
+mv rsl.*.* rsls.real/
+date
