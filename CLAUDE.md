@@ -1,0 +1,89 @@
+# CLAUDE.md
+
+Guidance for working in this repo (WRF-DART data assimilation for LASSO BNF LES forcing).
+
+## Purpose and plan
+
+A 50-member, 15-minute-cycled WRF-DART EAKF system at 2.5 km over BNF (MRMS reflectivity
+plus HRRR-type conventional observations), to test whether it gives better initial and
+boundary forcing for 500-m LES than hourly HRRRv4 analyses. The big picture is in
+`initial_plan_from_codex/` (the `.md` is the more detailed and more current one). Treat those
+documents as direction, not as finished implementation details. Implementation proceeds a
+piece at a time with trial and error.
+
+Decisions from the plan that still hold: `hybrid_opt = 0` and `use_theta_m = 1` for project
+WRF runs, with DART analyzing dry theta and a conversion back to moist `THM` (still to be
+implemented, following MPAS). The `theta_m0` case below is a deliberate comparison to size that
+difference, not a fallback configuration.
+
+## Current state
+
+- All software is built (WRF, WPS, WRFDA, DART); versions and patches are in `software_lock.json`
+  and `patches/README.md`.
+- Case `2025-05-20` (LASSO BNF, 2025-05-19 00Z to 05-22 00Z, 2.5 km, 550x390x150, dt = 5 s):
+  WPS and `real.exe` pipeline done. `baseline` (hybrid_opt=0) and `hybrid2` (hybrid_opt=2) WRF
+  runs are complete (289 history files each). `theta_m0` (use_theta_m=0) has only `real.exe`
+  done; its WRF run is deliberately held until the user asks.
+- Verified against sey's runs: ungrib and metgrid outputs identical, and our `hybrid_opt=2`
+  `wrfinput`/`wrfbdy` bit-identical to his.
+- Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
+  conversion, perturbation bank, ensemble. Comparison plots (OLR brightness temperature and
+  reflectivity vs GOES/MRMS/HRRR) are planned in the `bnf_wrf_eval` repo, not here.
+
+## Layout
+
+- `/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da` is this repo; `/ccsopen/home/hengxiao80/bnf_wrf_da`
+  is a link to it.
+- Source and builds live **outside** the repo in `../software/{WRF,WPS,WRFDA,DART}`. Executables are
+  linked in, and runtime configs, scripts and data are kept here. Never commit software trees or data.
+- `scripts/`: `env_wrf.sh` (module environment), `audit_configuration.py` (writes `software_lock.json`),
+  `link_hrrr_gribfiles.py`, `setup_ungrib_chunks.py`, `merge_ungrib_chunks.py`, `reverse_metgridlevs.py`
+  (WPS pipeline), `make_wrf_iotest.py` and `summarize_wrf_timing.py` (I/O tests),
+  `plot_layer_thickness.py`.
+- `cases/20250520/`: `geog/` (copied `geo_em.d01.nc`), `wps/` (ungrib/metgrid/reverse, 73 `met_em`
+  files), `baseline/` (`real.exe` outputs in place), `hybrid2/` and `theta_m0/` (`real.exe` run in a
+  `real/` subdirectory, then linked up), `iotest/`, `figures/`, and `DATA_SOURCES.md`.
+- `patches/`: local deviations from the pinned upstream code, with the reasons.
+
+## Environment and conventions
+
+- Builds and runs need `source scripts/env_wrf.sh` (intel/20.0.4 = ifort 19.1.3, openmpi/4.0.4,
+  netcdf-wrf/0.1, hdf5, jasper). This is a dm+sm build (MPI ranks x OpenMP threads).
+- Python is managed by `uv` (3.11, `uv run ...`). The system `python3` is 3.6 and too old. In Slurm
+  jobs call `.venv/bin/python` directly, since compute nodes have no internet. `UV_CACHE_DIR` is on
+  proj-shared (set in `~/.bashrc`) because home is nearly full.
+- Slurm: account `cli120`, partitions `priority_long` (WRF) and `batch_all`. Get the user's go-ahead
+  before submitting jobs, run multi-step pipelines one step at a time, and report each result.
+- Commit messages end with the `Co-Authored-By: Claude ...` trailer. The repo has no remote.
+  `.gitignore` allowlists only small config files under `cases/`; new small files there need adding to it.
+
+## Gotchas learned the hard way
+
+- The user's shell aliases `ls` with `-F`, so `ls` output has `@`/`*` suffixes. Use `find` or
+  `command ls` in scripts. This once created dozens of broken symlinks.
+- Claude Code replays a shell snapshot taken at session start, so `~/.bashrc` edits do not apply
+  mid-session; export explicitly or restart.
+- `make -i` (WRF, WPS) hides compile and link errors ("Error 1 (ignored)"). Read the log for real errors.
+  Two known fixes are in `patches/`.
+- Slurm reports a job `COMPLETED` even when `srun` was killed, since the script's last commands still
+  ran. Check the logs (`SUCCESS COMPLETE WRF` / `REAL_EM INIT`).
+- Keep the UCX settings (`UCX_TLS=self,sm,ud`, `UCX_UD_MLX5_RX_QUEUE_LEN=16384`) in every WRF/real
+  job script. Without them the larger 500-m runs fail on MPI communication. They make no speed
+  difference at 2.5 km.
+- PnetCDF is compiled in but troublesome. Quilting with PnetCDF crashes at startup, and quilting with
+  plain netCDF gives no overlap. Use `io_form_history = 2` with `use_netcdf_classic = .true.`.
+  Compressed netCDF-4 output costs ~45 s per write (single-threaded deflate) versus ~5 s for classic.
+  Compress afterwards if disk matters: `nccopy -k nc4 -d 2 -s in out` (lossless, ~3x smaller).
+- `nocolons = .true.` is needed so output names (`wrfout_d01_YYYY-MM-DD_HH_MM_SS`) match what
+  `bnf_wrf_eval` expects.
+- Baseline settings: 16 nodes, 256 ranks x 8 threads, `nproc_x = nproc_y = 16`, ~4 h wall for 72 h
+  of model time (15-min history, ~1.1 TB). A 16x32 automatic decomposition performed worse.
+- `real.exe` with `use_netcdf_classic` unset writes compressed netCDF-4 input files, which is fine.
+
+## External data and other repos
+
+- Inputs come from `sey`'s directories, referenced in place and read-only: HRRR analyses under
+  `/gpfs/wolf2/arm/cli120/proj-shared/sey/bnf/wrf/forcing/hrrr`, plus a few files copied from his case.
+  Never modify anything under `sey/`. `cases/20250520/DATA_SOURCES.md` lists every dependency.
+- `../bnf_wrf_eval` evaluates WRF runs against HRRR, GOES, MRMS and lightning. It has its own
+  `CLAUDE.md`, its own `uv` environment, and expects `wrfout_d01_YYYY-MM-DD_HH_MM_SS` run directories.
