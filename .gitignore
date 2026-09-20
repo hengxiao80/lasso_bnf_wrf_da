@@ -1,0 +1,32 @@
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+
+# Claude Code local state
+.claude/
+
+# cases/ holds huge data (met_em, FILE:*, wrfinput/wrfbdy, wrfout, logs, links into shared
+# data). Ignore everything there and whitelist only the small config/notes files.
+cases/**/*
+!cases/**/
+!cases/*/DATA_SOURCES.md
+!cases/*/wps/namelist.wps
+!cases/*/wps/Vtable.hrrrv4rap
+!cases/*/wps/slurm.ungrib
+!cases/*/wps/slurm.ungrib_array
+!cases/*/wps/slurm.metgrid
+!cases/*/wps/slurm.reverse
+# run directories: baseline, hybrid2, theta_m0, ... (namelists and job scripts only)
+!cases/*/*/namelist.input
+!cases/*/*/namelist.input.*
+!cases/*/*/slurm.real
+!cases/*/*/slurm.wrf
+!cases/*/*/real/namelist.input
+!cases/*/*/real/slurm.real
+# I/O and decomposition test variants
+!cases/*/iotest/submit_chain*.sh
+!cases/*/iotest/*/namelist.input
+!cases/*/iotest/*/slurm.wrf
+# figures
+!cases/*/figures/*.png

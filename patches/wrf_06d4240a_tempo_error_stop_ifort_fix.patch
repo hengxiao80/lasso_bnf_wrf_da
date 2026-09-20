@@ -1,0 +1,26 @@
+diff --git a/src/module_mp_tempo_driver.F90 b/src/module_mp_tempo_driver.F90
+index bf16cb2..5ac7ff0 100644
+--- a/src/module_mp_tempo_driver.F90
++++ b/src/module_mp_tempo_driver.F90
+@@ -644,8 +644,9 @@ module module_mp_tempo_driver
+         ' can be build by compiling and running the executable "build_tables" in the main TEMPO directory. ', &
+         'Then copy the file to the directory where the model executable is located.'
+       write(*,'(A)') '   (3) Ask the developers for tables. They are willing to share.' 
+-      write(*,'(A)') ''      
+-      error stop '--- file "' // filename // '" needed for TEMPO microphysics was not found.'
++      write(*,'(A)') ''
++      write(*,'(3A)') '--- file "', filename, '" needed for TEMPO microphysics was not found.'
++      error stop 1
+     endif
+ 
+     if (filesize /= table_size) then
+@@ -664,7 +665,8 @@ module module_mp_tempo_driver
+         'Then copy the file to the directory where the model executable is located.'
+       write(*,'(A)') '   (3) Ask the developers for tables. They are willing to share.' 
+       write(*,'(A)') ''
+-      error stop '--- size of file "' // filename // '" needed for TEMPO microphysics is inconsistent with expected size.'
++      write(*,'(3A)') '--- size of file "', filename, '" needed for TEMPO microphysics is inconsistent with expected size.'
++      error stop 1
+     endif
+   end subroutine check_before_table_read
+ 
