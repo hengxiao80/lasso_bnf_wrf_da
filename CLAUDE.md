@@ -22,8 +22,8 @@ difference, not a fallback configuration.
   and `patches/README.md`.
 - Case `2025-05-20` (LASSO BNF, 2025-05-19 00Z to 05-22 00Z, 2.5 km, 550x390x150, dt = 5 s):
   WPS and `real.exe` pipeline done. `baseline` (hybrid_opt=0) and `hybrid2` (hybrid_opt=2) WRF
-  runs are complete (289 history files each). `theta_m0` (use_theta_m=0) has only `real.exe`
-  done; its WRF run is deliberately held until the user asks.
+  runs are complete (289 history files each). `theta_m0` (use_theta_m=0) `real.exe` is done and its
+  WRF run was submitted on 2026-09-20 (job 1034057); check whether it has finished before assuming.
 - Verified against sey's runs: ungrib and metgrid outputs identical, and our `hybrid_opt=2`
   `wrfinput`/`wrfbdy` bit-identical to his.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
