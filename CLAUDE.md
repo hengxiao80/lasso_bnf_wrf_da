@@ -13,8 +13,13 @@ piece at a time with trial and error.
 
 Decisions from the plan that still hold: `hybrid_opt = 0` and `use_theta_m = 1` for project
 WRF runs, with DART analyzing dry theta and a conversion back to moist `THM` (still to be
-implemented, following MPAS). The `theta_m0` case below is a deliberate comparison to size that
-difference, not a fallback configuration.
+implemented, following MPAS).
+
+Temporary deviation, decided by the user on 2026-09-21: the DART workflow is being developed first
+with the `theta_m0` setup (`hybrid_opt = 0`, `use_theta_m = 0`). Stock DART requires `USE_THETA_M = 0`
+(`model_mod.f90` errors otherwise), so this avoids the moist/dry conversion while the rest of the
+workflow is worked out. The conversion comes back once that workflow works. The target
+configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final choice.
 
 ## Current state
 
