@@ -52,8 +52,11 @@ difference, not a fallback configuration.
 - Python is managed by `uv` (3.11, `uv run ...`). The system `python3` is 3.6 and too old. In Slurm
   jobs call `.venv/bin/python` directly, since compute nodes have no internet. `UV_CACHE_DIR` is on
   proj-shared (set in `~/.bashrc`) because home is nearly full.
-- Slurm: account `cli120`, partitions `priority_long` (WRF) and `batch_all`. Get the user's go-ahead
-  before submitting jobs, run multi-step pipelines one step at a time, and report each result.
+- Slurm: account `cli120`. Submit to `batch_all` (5-day limit) by default; do not use `priority_long`
+  unless a run needs more than 5 days, and the user will say when to switch queue. (The existing
+  `cases/` job scripts say `priority_long` because they were copied from sey's setup and are kept as
+  a record of what ran; do not copy that into new scripts.) Get the user's go-ahead before submitting
+  jobs, run multi-step pipelines one step at a time, and report each result.
 - Commit messages end with the `Co-Authored-By: Claude ...` trailer. The repo has no remote.
   `.gitignore` allowlists only small config files under `cases/`; new small files there need adding to it.
 
