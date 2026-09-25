@@ -60,3 +60,37 @@ pinned upstream commit, why it was needed, and how it was applied.
 - **Applied:** 17 September 2026 (session date; system clock read 18 September
   by the time of this note), after `geogrid.exe`/`metgrid.exe` failed to link
   on the first `./compile` pass. `ungrib.exe` needed no fix.
+
+## dart_7bbd35a09_madis_acars_wvss_humidity.patch
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), file
+  `observations/obs_converters/MADIS/convert_madis_acars.f90`. Rebuild with
+  `observations/obs_converters/MADIS/work/quickbuild.sh convert_madis_acars`.
+- **Why:** in current MADIS `point/acars` files (checked 2025-05-20 18Z) the converter's humidity input,
+  `downlinkedRH`, is empty for all reports (so is `relHumidity`), so the stock converter writes **no**
+  aircraft humidity. The humidity is carried only as the WVSS-II mixing ratio `waterVaporMR` (kg/kg,
+  `_FillValue = -1`). Its QC field `waterVaporQC` is also empty, so it can only be used without instrument QC.
+  The user decided (2026-09-25) to use it anyway, because aircraft humidity is important for the BNF
+  environment (see `notes/wrf_dart_tutorial_adaptation.md` 2.13).
+- **Fix:** read `waterVaporMR` when the file has it (`nc_variable_exists`). When the stock RH/dewpoint moisture
+  path is not taken, add a branch: q = w/(1+w), RH = q/q_sat(T, p), with the error computed as in the stock RH
+  path (`acars_rel_hum_error` × q_sat, i.e. 20% RH). Write `ACARS_SPECIFIC_HUMIDITY` if w > 0,
+  0 < RH ≤ 1.1 and q ≤ 0.07. Files with a valid `downlinkedRH` behave as before. All changed lines are marked
+  `LOCAL PATCH (bnf_wrf_da)`.
+- **Effect (18Z 05-20, lat/lon box around the domain):** 0 → 735 `ACARS_SPECIFIC_HUMIDITY` obs; 2,356 overall.
+  Of 1,556 WVSS reports in the box, half are exact duplicates (removed by the converter's existing
+  duplicate check), and about 24 fail RH ≤ 1.1.
+- **Applied:** 25 September 2026.
+
+## dart_7bbd35a09_types_mod_r8_as_r4.patch
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), file
+  `assimilation_code/modules/utilities/types_mod.f90`. Affects every DART executable (`filter`,
+  `model_mod_check`, converters, ...), so all of them must be (re)built with it in place.
+- **Why:** the WRF-DART tutorial (Step 1, "Optional: Modify for 32-bit reals") recommends it because WRF is
+  normally run in single precision, and we run WRF with 4-byte reals too. It also roughly halves DART's
+  state-vector memory, which matters for 50 members on the 550 × 390 × 150 grid. User's decision.
+- **Fix:** comment out `integer, parameter :: r8 = SELECTED_REAL_KIND(12)` and enable the stock alternative
+  `integer, parameter :: r8 = r4`. No other change.
+- **Applied:** 22 September 2026 (file timestamp), before the DART builds used so far. Documented here
+  25 September 2026; it was not recorded at the time.

@@ -1,0 +1,74 @@
+diff --git a/observations/obs_converters/MADIS/convert_madis_acars.f90 b/observations/obs_converters/MADIS/convert_madis_acars.f90
+index c474a7c3f..e77f409cc 100644
+--- a/observations/obs_converters/MADIS/convert_madis_acars.f90
++++ b/observations/obs_converters/MADIS/convert_madis_acars.f90
+@@ -29,7 +29,8 @@ program convert_madis_acars
+ use         types_mod, only : r8, missing_r8
+ use      location_mod, only : VERTISPRESSURE
+ use     utilities_mod, only : initialize_utilities, finalize_utilities
+-use  netcdf_utilities_mod, only : nc_open_file_readonly, nc_close_file
++use  netcdf_utilities_mod, only : nc_open_file_readonly, nc_close_file, &
++                                  nc_variable_exists  ! LOCAL PATCH (bnf_wrf_da)
+ use  time_manager_mod, only : time_type, set_calendar_type, set_date, operator(>=), &
+                               increment_time, get_time, operator(-), GREGORIAN
+ use  obs_sequence_mod, only : obs_sequence_type, obs_type, read_obs_seq, &
+@@ -79,6 +80,13 @@ real(r8), allocatable :: lat(:), lon(:), palt(:), tair(:), relh(:), tdew(:), &
+ integer,  allocatable :: qc_palt(:), qc_tair(:), qc_relh(:), qc_tdew(:), qc_wdir(:), qc_wspd(:)
+ integer,  allocatable :: used(:), sorted_used(:)
+ 
++! LOCAL PATCH (bnf_wrf_da): WVSS-II water vapor mixing ratio.  Recent MADIS acars files
++! (e.g. 2025) leave downlinkedRH empty and carry aircraft humidity only as waterVaporMR
++! (kg/kg), whose QC field (waterVaporQC) is also empty, so it is used without input QC.
++logical  :: have_wvmr
++real(r8) :: wvmr_miss, rh_w
++real(r8), allocatable :: wvmr(:)
++
+ type(obs_sequence_type) :: obs_seq
+ type(obs_type)          :: obs, prev_obs
+ type(time_type)         :: comp_day0, time_obs, prev_time
+@@ -125,6 +133,13 @@ call getvar_real(ncid, "windDir",      wdir, wdir_miss) ! wind direction
+ call getvar_real(ncid, "windSpeed",    wspd, wspd_miss) ! wind speed
+ call getvar_int (ncid, "timeObs",      tobs           ) ! observation time
+ 
++! LOCAL PATCH (bnf_wrf_da): read the WVSS-II mixing ratio if the file has it
++have_wvmr = nc_variable_exists(ncid, "waterVaporMR")
++if (have_wvmr) then
++   allocate(wvmr(nobs))
++   call getvar_real(ncid, "waterVaporMR", wvmr, wvmr_miss) ! mixing ratio (kg/kg)
++endif
++
+ ! if user says to use them, read in QCs if present
+ if (use_input_qc) then
+    call get_or_fill_QC(ncid, "altitudeQCR",     qc_palt)
+@@ -322,6 +337,31 @@ obsloop2: do i = 1, nused
+          endif
+       endif
+   
++  ! LOCAL PATCH (bnf_wrf_da): no usable RH/dewpoint, but a WVSS-II mixing ratio is present.
++  ! q = w/(1+w); the error follows the RH path above (acars_rel_hum_error * qsat).
++  ! Sanity bounds only: w > 0 and 0 < RH <= 1.1 (no instrument QC is available).
++  else if ( have_wvmr .and. include_specific_humidity ) then
++
++      if ( tair(n) /= tair_miss .and. qc_tair(n) == 0 .and. &
++           wvmr(n) /= wvmr_miss .and. wvmr(n) > 0.0_r8 ) then
++
++         qobs = wvmr(n) / (1.0_r8 + wvmr(n))
++         qsat = specific_humidity(sat_vapor_pressure(tair(n)), pres)
++         rh_w = qobs / qsat
++         qerr = acars_rel_hum_error(pres * 0.01_r8, tair(n), min(rh_w, 1.0_r8))
++         oerr = max(qerr * qsat, 0.0001_r8)
++
++         if ( rh_w > 0.0_r8 .and. rh_w <= 1.1_r8 .and. &
++              qobs <= 0.07_r8 .and. qerr /= missing_r8 ) then
++
++            call create_3d_obs(lat(n), lon(n), pres, VERTISPRESSURE, qobs, &
++                               ACARS_SPECIFIC_HUMIDITY, oerr, oday, osec, qc, obs)
++            call add_obs_to_seq(obs_seq, obs, time_obs, prev_obs, prev_time, first_obs)
++
++         endif
++
++      endif
++
+   endif     ! quality control/missing check on tair, tdew, and relh
+ 
+ 100 continue

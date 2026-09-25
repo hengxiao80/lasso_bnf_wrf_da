@@ -32,7 +32,11 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 - Verified against sey's runs: ungrib and metgrid outputs identical, and our `hybrid_opt=2`
   `wrfinput`/`wrfbdy` bit-identical to his.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
-  conversion, perturbation bank, ensemble. Comparison of the three runs (OLR brightness temperature and
+  conversion, perturbation bank, ensemble, and the NCEP/prepbufr conventional-observation
+  pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —
+  already called for in `initial_plan_from_codex/` Phase 2 Steps 2E-2H to bring in the
+  HRRRv4-CONUS conventional-observation families, reconfirmed by the user on 2026-09-22.
+  Comparison of the three runs (OLR brightness temperature and
   reflectivity vs GOES/MRMS/HRRR, differences between runs) is being done in the `bnf_wrf_eval` repo, in a
   separate session, not here.
 
