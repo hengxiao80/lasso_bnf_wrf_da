@@ -94,3 +94,53 @@ pinned upstream commit, why it was needed, and how it was applied.
   `integer, parameter :: r8 = r4`. No other change.
 - **Applied:** 22 September 2026 (file timestamp), before the DART builds used so far. Documented here
   25 September 2026; it was not recorded at the time.
+
+## dart_7bbd35a09_madis_rawin_use_namelist.patch
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), file
+  `observations/obs_converters/MADIS/convert_madis_rawin.f90` (one line). Rebuild with
+  `observations/obs_converters/MADIS/work/quickbuild.sh convert_madis_rawin`.
+- **Why:** the stock source has `use_namelist = .false.`, so the converter ignores
+  `&convert_madis_rawin_nml` and prompts on the console ("Include significant level winds,
+  temperature?"). Run unattended (scripts, Slurm) with nothing on standard input, it crashes with
+  `forrtl: severe (24): end-of-file`. The user chose (2026-09-29) to let it read its namelist instead of
+  piping `echo "T T"` into it.
+- **Fix:** `use_namelist = .true.`. The converter now reads `&convert_madis_rawin_nml` from `input.nml`
+  in its working directory; the block in `MADIS/work/input.nml` equals the compiled-in defaults, and both
+  significant-level switches are true (what the pipe supplied). Verified: the 12Z 05-20 radiosonde file
+  converted without standard input gives an `obs_seq.rawin` byte-for-byte identical to the piped run.
+- **Other MADIS converters are unchanged:** their options (`LH_err`, `include_specific_humidity`,
+  `include_relative_humidity`, `include_dewpoint`, `use_input_qc`, ...) stay compile-time `parameter`
+  constants in the source (decision 2026-09-29: keep them in the code so that changes are recorded here).
+- **Applied:** 29 September 2026.
+
+## dart_7bbd35a09_wrf_bc_hydrometeors_aerosol_shift.patch
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), files
+  `models/wrf/WRF_BC/update_wrf_bc.f90` and `models/wrf/WRF_BC/pert_wrf_bc.f90`. Rebuild with
+  `models/wrf/work/quickbuild.sh update_wrf_bc pert_wrf_bc` (not yet done).
+- **Why:** see `notes/lateral_boundary_fields_for_da.md`. Our `real.exe` `wrfbdy` has zero boundary values
+  for every hydrometeor mass and number (`real.exe` computes moisture boundaries only for `QVAPOR`), and
+  our WRF runs use them (`have_bcs_moist = have_bcs_scalar = .true.`). Stock, both tools refit
+  `QCLOUD QRAIN QICE QSNOW QGRAUP QNICE` from full model states that carry HRRR or member hydrometeors,
+  while `QNRAIN`/`QNCLOUD` stay zero. That would give the DA runs nonzero hydrometeor boundaries,
+  unlike the free runs, with mass and number inconsistent. Separately, `update_wrf_bc` moves the record
+  start time to the segment start for all fields, so fields it doesn't refit would be read 15–45 min late
+  in 15-min cycling. Of those, only the aerosol numbers `QNWFA QNIFA QNBCA` have nonzero boundary values.
+- **Fix:**
+  1. Both tools: `nmoist = 1` (was 7), so only `QVAPOR` among the moisture fields is refitted. The six
+     hydrometeors keep the file's values (zero).
+  2. `update_wrf_bc` only: before the record start time is rewritten, `B` of `QNWFA`, `QNIFA` and `QNBCA` is
+     moved to the new start along the original tendency, `B + tend × (new start − old start)`. The tendency
+     is kept. This is a no-op when the segment starts at a record start. `pert_wrf_bc` doesn't need it,
+     because we use it only at record starts.
+- **Not changed:** both tools still read `T` (not `THM`) for `T_BXS`; for the `theta_m0` setup every file
+  we write keeps `T = THM` (note Sec. 4).
+- **Revisit later:** the zero hydrometeor boundaries come from the `have_bcs_moist`/`have_bcs_scalar`
+  choice inherited from sey's setup. If we change those flags (e.g. both `.false.` for flow-dependent
+  hydrometeor boundaries), this patch should be reconsidered.
+- **Applied:** source edited and both programs rebuilt 30 September 2026 with
+  `./quickbuild.sh WRF_BC/update_wrf_bc` and `./quickbuild.sh WRF_BC/pert_wrf_bc` (single-program builds
+  need the path as listed in `quickbuild.sh`). Clean compile; log `models/wrf/work/quickbuild_wrf_bc_patch.log`.
+  The previous (stock, 18 September) executables are kept in `models/wrf/work/stock_20260918/`.
+  Behavior not yet tested: pilot step 8 (boundary test).

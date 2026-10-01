@@ -149,7 +149,7 @@ What each cycling script does:
 | `run/memNNN/wrfinput_d01` × 50 (initial) | step 4 | 50 × ~1.2 GB |
 | `bdy/wrfbdy_d01_memNNN` × 50 | step 5 | ≈ 460 GB |
 | `input_priorinf_mean/sd.nc` | step 6 | small |
-| per-cycle `output/` | steps 7–8 | set by the `stages_to_write`/member-output choice; decide retention before long runs |
+| per-cycle `output/` | steps 7–8 | pilot: everything (member priors, analyses, refit boundary copies, mean/sd, `obs_seq.final`, inflation), ≈ 40 GB per cycle for 5 members (pilot steps Q10, decided 2026-10-01); decide retention before long runs |
 
 ### 2.5 Observation side (being planned; conventional source chosen: public MADIS, adaptation note 2.13)
 

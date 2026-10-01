@@ -1,0 +1,15 @@
+diff --git a/observations/obs_converters/MADIS/convert_madis_rawin.f90 b/observations/obs_converters/MADIS/convert_madis_rawin.f90
+index 288fef662..7f111088e 100644
+--- a/observations/obs_converters/MADIS/convert_madis_rawin.f90
++++ b/observations/obs_converters/MADIS/convert_madis_rawin.f90
+@@ -118,7 +118,9 @@ logical :: do_significant_level_temps = .true.
+ logical :: do_significant_level_winds = .true.
+ character(len=32) :: sig_wind_type = 'unknown'
+ 
+-logical :: use_namelist = .false.
++! LOCAL PATCH (bnf_wrf_da): was .false., which ignored &convert_madis_rawin_nml and prompted on
++! the console; .true. reads the namelist from input.nml so the converter runs unattended.
++logical :: use_namelist = .true.
+ 
+ ! THIS WILL NOT BE READ IN UNLESS use_namelist IS SET TO .true.
+ ! if true, the code will NOT prompt for input from the console.

@@ -1,0 +1,6 @@
+# member bank_draw   (seed 20250520; scale U=1.3 V=1.3 THM=1.3 QVAPOR=1.3 MU=0.6; centered=1)
+  1   4
+  2  14
+  3   5
+  4   8
+  5   7

@@ -1,0 +1,67 @@
+#!/bin/bash
+# Modified-restart test (pilot step 7, test b): restart from a WRF restart file whose state was
+# changed through the DART-facing file (scripts/da/wrfrst_dart.py), as after filter.
+# Input: tests/true_restart/continuous/wrfrst_d01_2025-05-20_00_15_00 (copied per case).
+#   B0_roundtrip    extract + insert without change (recompute on): should match the plain restart
+#   B1_norecompute  + pert_mem001 (U V THM QVAPOR MU) as a fake increment, P/AL left as in the file
+#   B2_recompute    same increment, AL/ALT/P/P_HYD recomputed
+# Each runs 15 min (00:15 -> 00:30) with diag_print = 1. The report compares the domain-mean
+# |dpsfc/dt| series (noise after the update) and the 00:30 states, with B0 as the reference.
+#   sbatch slurm.restart_increment_test
+#SBATCH --job-name=incr520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.restart_increment_test.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0/config/experiment.sh
+source ${EXP_SH}
+PY=${PROJECT_DIR}/.venv/bin/python
+TEST_DIR=${EXP_DIR}/tests/restart_increment
+RST_NAME=wrfrst_d01_2025-05-20_00_15_00
+RST=${EXP_DIR}/tests/true_restart/continuous/${RST_NAME}
+BDY=${EXP_DIR}/bdy/wrfbdy_d01_mean_2025-05-20_00_2h
+PERT=${PERTS_DIR}/members/pert_mem001.nc
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+set -e
+
+# wrf.exe UCX settings, as in the existing slurm.wrf scripts; don't mix with real.exe's.
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+for case in B0_roundtrip B1_norecompute B2_recompute; do
+   d=${TEST_DIR}/${case}
+   mkdir -p ${d}/input
+   cp ${RST} ${d}/input/${RST_NAME}
+   ${PY} ${PROJECT_DIR}/scripts/da/wrfrst_dart.py extract ${d}/input/${RST_NAME} ${d}/input/dart_d01.nc
+   opt=""
+   case ${case} in
+      B1_*) ${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py perturb ${d}/input/dart_d01.nc ${PERT}
+            opt=--no-recompute ;;
+      B2_*) ${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py perturb ${d}/input/dart_d01.nc ${PERT} ;;
+   esac
+   echo "== ${case}: insert ${opt}"
+   ${PY} ${PROJECT_DIR}/scripts/da/wrfrst_dart.py insert ${d}/input/dart_d01.nc ${d}/input/${RST_NAME} ${opt}
+   RESTART=.true. ${PROJECT_DIR}/scripts/da/run_wrf_segment.sh ${EXP_SH} ${d}/run \
+      2025-05-20_00:15:00 900 ${d}/input/${RST_NAME} ${BDY} 16 8
+done
+
+${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py report ${TEST_DIR}/B0_roundtrip/run \
+   ${TEST_DIR}/B1_norecompute/run ${TEST_DIR}/B2_recompute/run
+echo "== B0 vs the plain restart (tests/true_restart/restarted)"
+${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py report ${EXP_DIR}/tests/true_restart/restarted \
+   ${TEST_DIR}/B0_roundtrip/run
+rm -f ${TEST_DIR}/*/input/${RST_NAME}
+date

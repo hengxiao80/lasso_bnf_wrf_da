@@ -57,3 +57,27 @@ Only implemented for the `threed_sphere` location module (the one this project u
   conventional) — not yet configured, since the plan's per-type localization design (units,
   full-width-vs-half-width) isn't finalized.
 - Same source block as `cutoff`: `assim_tools_mod.rst`, `&assim_tools_nml`.
+
+## `wrf_state_variables` (`&model_nml`): `UPDATE` vs `NO_COPY_BACK`, surface fields — 2026-10-01
+
+Which WRF fields are in DART's state vector and which analyses are written back. Details and code
+references in `notes/da_5member_pilot_steps.md`, "Q8: how DART uses the state variables".
+
+- Every state variable is updated by every observation within the localization radius, whatever
+  its type (EAKF regression on the observed quantity). MU, PH and PSFC are updated by wind or
+  temperature observations too. To restrict this per observation type and state quantity:
+  `&assim_tools_nml :: obs_impact_filename` (impact table; not configured).
+- 4th column `UPDATE` / `NO_COPY_BACK`: only whether the analysis goes into the member files
+  (`output` stage). `NO_COPY_BACK` variables are still updated inside `filter` and appear in the
+  `stages_to_write` diagnostic files and in `obs_seq.final` posteriors.
+- Surface observations (`SURFACE` vertical coordinate: METAR, marine) use only T2, Q2, U10/V10,
+  PSFC (or MU + MUB + p_top). Without T2/Q2/U10/V10 in the state they are rejected (QC 4).
+  They shape the 3-D update only through the forward operator (innovation, outlier check,
+  regression); WRF rediagnoses them every step, so writing them back doesn't matter.
+- DART computes pressure from PH, MU, THM, QVAPOR (never reads WRF's `P`), so PH and MU stay in
+  the state even if not written back.
+- **Decided (user):** T2, Q2, U10, V10, PSFC in the state with `NO_COPY_BACK` for now, possibly
+  `UPDATE` in later tests; hydrometeors to follow HRRRv4, later. Open: MU/PH write-back (surface
+  pressure obs can't change column mass without MU), W. Pilot plan Q8.
+- Related: `cutoff`, `special_localization_*` above; `wrf_state_bounds` (clamping, applied only
+  to the `output` stage); `stages_to_write` (pilot plan Q10).

@@ -1,0 +1,39 @@
+#!/bin/bash
+# DRAFT for review -- not submitted.
+# Hourly unperturbed wrfinput files (real.exe, one time level per call) for the DA experiment:
+# scripts/da/make_mean_icbc.sh writes ${MEAN_DIR}/wrfinput_d01_YYYY-MM-DD_HH_00_00 and links the
+# existing 72-h theta_m0 wrfbdy_d01. Run a short test first (FIRST_HOUR=0 LAST_HOUR=1) to time one
+# hour, then the full range (0-72); existing outputs are skipped on rerun.
+#   sbatch --export=ALL,FIRST_HOUR=0,LAST_HOUR=1  slurm.make_mean_icbc
+# Layout as in theta_m0 real.exe (16 ranks x 8 OpenMP threads per node), on 4 nodes.
+#SBATCH --job-name=mean520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=06:00:00
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.make_mean_icbc.%j.out
+#SBATCH --exclusive
+
+FIRST_HOUR=${FIRST_HOUR:-0}
+LAST_HOUR=${LAST_HOUR:-72}
+
+date
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/env_wrf.sh
+
+# real.exe UCX setting, as in the existing slurm.real scripts (from sey's real.exe job).
+# wrf.exe jobs use a different setting (see slurm.wrf); don't mix them.
+export UCX_TLS=rc,xpmem,self
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s unlimited
+
+/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da/make_mean_icbc.sh \
+   /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh \
+   "${FIRST_HOUR}" "${LAST_HOUR}"
+status=$?
+date
+exit ${status}

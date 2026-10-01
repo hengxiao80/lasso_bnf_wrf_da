@@ -1,0 +1,56 @@
+#!/bin/bash
+# Run one WRF segment in its own directory (pilot steps 7-8; later called by advance_member.sh).
+#
+# Usage: run_wrf_segment.sh <experiment.sh> <run_dir> <start YYYY-MM-DD_HH:MM:SS> <seconds>
+#                           <wrfinput> <wrfbdy> <nproc_x> <nproc_y>
+#
+# Environment (optional): RESTART=.true. starts from a WRF restart file: <wrfinput> is then a
+# wrfrst file, linked as wrfrst_d01_<start>; default .false. (cold start from wrfinput_d01).
+# RESTART_INTERVAL (minutes) for restart output; default 7200 (none within a segment).
+#
+# Links the WRF run-time tables and wrf.exe into run_dir, links <wrfinput> as wrfinput_d01 and
+# <wrfbdy> as wrfbdy_d01 (WRF only reads them), writes namelist.input from
+# ${CONFIG_DIR}/namelist.input.wrf and copies ${CONFIG_DIR}/iofields_cycle.txt, then runs
+# nproc_x * nproc_y MPI ranks with srun (OpenMP threads from the calling job's environment,
+# including the wrf.exe UCX settings). Fails unless rsl.out.0000 ends in SUCCESS COMPLETE WRF.
+set -eu
+
+exp_sh=$1 run_dir=$2 start=$3 seconds=$4 wrfinput=$5 wrfbdy=$6 npx=$7 npy=$8
+source "${exp_sh}"
+
+end=$(date -u -d "${start:0:10} ${start:11:8} UTC + ${seconds} seconds" +%Y-%m-%d_%H:%M:%S)
+mkdir -p "${run_dir}"
+cd "${run_dir}"
+rm -f rsl.out.* rsl.error.* wrfinput_d01 wrfbdy_d01 "wrfrst_d01_${start//:/_}"
+restart=${RESTART:-.false.}
+rst_int=${RESTART_INTERVAL:-7200}
+
+# Run-time tables and executables (not the namelist): `find`, since ls is aliased with -F.
+find "${WRF_RUN_DIR}" -maxdepth 1 \( -type f -o -type l \) ! -name 'namelist.input*' \
+   -exec ln -sf {} . \;
+if [ "${restart}" = ".true." ]; then
+   ln -sf "$(readlink -f "${wrfinput}")" "wrfrst_d01_${start//:/_}"
+else
+   ln -sf "$(readlink -f "${wrfinput}")" wrfinput_d01
+fi
+ln -sf "$(readlink -f "${wrfbdy}")" wrfbdy_d01
+cp "${CONFIG_DIR}/iofields_cycle.txt" .
+
+sed -e "s/@SY@/${start:0:4}/; s/@SM@/${start:5:2}/; s/@SD@/${start:8:2}/" \
+    -e "s/@SH@/${start:11:2}/; s/@SN@/${start:14:2}/" \
+    -e "s/@EY@/${end:0:4}/; s/@EM@/${end:5:2}/; s/@ED@/${end:8:2}/" \
+    -e "s/@EH@/${end:11:2}/; s/@EN@/${end:14:2}/" \
+    -e "s/@NPX@/${npx}/; s/@NPY@/${npy}/" \
+    -e "s/@RESTART@/${restart}/; s/@RSTINT@/${rst_int}/" \
+    "${CONFIG_DIR}/namelist.input.wrf" > namelist.input
+if grep -q '@[A-Z]*@' namelist.input; then
+   echo "run_wrf_segment.sh: unfilled placeholder in namelist.input" >&2; exit 1
+fi
+
+echo "$(date) wrf.exe ${start} -> ${end} in ${run_dir} ($((npx * npy)) ranks, restart=${restart})"
+t0=$(date +%s)
+srun -n $((npx * npy)) --cpu_bind=cores ./wrf.exe || true
+echo "$(date) wrf.exe finished, $(( $(date +%s) - t0 )) s"
+if ! tail -n 5 rsl.out.0000 | grep -q 'SUCCESS COMPLETE WRF'; then
+   echo "run_wrf_segment.sh: wrf.exe did not complete in ${run_dir}" >&2; exit 1
+fi

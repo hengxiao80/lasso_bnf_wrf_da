@@ -1,0 +1,79 @@
+diff --git a/models/wrf/WRF_BC/pert_wrf_bc.f90 b/models/wrf/WRF_BC/pert_wrf_bc.f90
+index 2cf94facd..7f9f1fee0 100644
+--- a/models/wrf/WRF_BC/pert_wrf_bc.f90
++++ b/models/wrf/WRF_BC/pert_wrf_bc.f90
+@@ -105,7 +105,11 @@ tenname(3)='_BTYS'
+ tenname(4)='_BTYE'
+ 
+ !--3D need update
+-nmoist = 7 
++! bnf_wrf_da local patch: refit QVAPOR only (nmoist = 1, was 7). QCLOUD, QRAIN, QICE, QSNOW,
++! QGRAUP and QNICE keep the values in wrfbdy (zero from real.exe), as in our free runs, instead
++! of being taken from the full model states in wrfinput_this/next (which carry HRRR hydrometeors).
++! Their number concentrations are not refitted either, so masses and numbers stay consistent.
++nmoist = 1
+ num3d  = 5 + nmoist
+ var3d(1)='U'
+ var3d(2)='V'
+diff --git a/models/wrf/WRF_BC/update_wrf_bc.f90 b/models/wrf/WRF_BC/update_wrf_bc.f90
+index cd78e5a84..006b7a2e9 100644
+--- a/models/wrf/WRF_BC/update_wrf_bc.f90
++++ b/models/wrf/WRF_BC/update_wrf_bc.f90
+@@ -75,6 +75,14 @@ logical, parameter :: debug = .false.
+ 
+ real(r8) :: bdyfrq_old, bdyfrq, infl
+ 
++! bnf_wrf_da local patch: boundary fields that are not refitted, but have nonzero boundary
++! values in our real.exe wrfbdy. Moving the record start time to the segment start would
++! otherwise make WRF read them 15-45 min late, so their start value B is moved forward
++! along the original tendency (which is kept).
++integer, parameter :: num_shift = 3
++character(len=20)  :: var_shift(num_shift) = (/ 'QNWFA ', 'QNIFA ', 'QNBCA ' /)
++real(r8)           :: dt_shift
++
+ !----------------------------------------------------------------------
+ 
+ call initialize_utilities('update_wrf_bc')
+@@ -115,7 +123,10 @@ tenname(3)='_BTYS'
+ tenname(4)='_BTYE'
+ 
+ !--3D need update
+-nmoist = 7 
++! bnf_wrf_da local patch: refit QVAPOR only (nmoist = 1, was 7). QCLOUD, QRAIN, QICE, QSNOW,
++! QGRAUP and QNICE keep the values in wrfbdy (zero from real.exe), as in our free runs.
++! Their number concentrations are not refitted either, so masses and numbers stay consistent.
++nmoist = 1
+ num3d  = 5 + nmoist
+ var3d(1)='U'
+ var3d(2)='V'
+@@ -178,6 +189,30 @@ call time_diff( udtime(1), nextbdytime(itime), bdyfrq )
+ 
+ if(debug) print*, 'New bdyfrq = ',bdyfrq
+ 
++!-- bnf_wrf_da local patch: for the fields in var_shift, move B from the old record start to
++!-- the new one, B + tend * (udtime - old thisbdytime), keeping tend. No-op at a record start.
++dt_shift = bdyfrq_old - bdyfrq
++loop_shift : do n=1,num_shift
++   if ( .not. variable_exist(wrf_bdy_file, trim(var_shift(n))//trim(bdyname(1))) ) cycle loop_shift
++   do m=1,4
++      var_name=trim(var_shift(n)) // trim(bdyname(m))
++      call get_dims_cdf( wrf_bdy_file, trim(var_name), dims, ndims, debug )
++      allocate(frst3d(dims(1), dims(2), dims(3)))
++      allocate(tend3d(dims(1), dims(2), dims(3)))
++      call get_var_3d_real_cdf( wrf_bdy_file, trim(var_name), frst3d, &
++                                dims(1), dims(2), dims(3), itime, debug )
++      var_name=trim(var_shift(n)) // trim(tenname(m))
++      call get_var_3d_real_cdf( wrf_bdy_file, trim(var_name), tend3d, &
++                                dims(1), dims(2), dims(3), itime, debug )
++      frst3d = frst3d + tend3d*dt_shift
++      var_name=trim(var_shift(n)) // trim(bdyname(m))
++      call put_var_3d_real_cdf( wrf_bdy_file, trim(var_name), frst3d, &
++                                dims(1), dims(2), dims(3), itime, debug )
++      deallocate(frst3d)
++      deallocate(tend3d)
++   enddo
++enddo loop_shift
++
+ !-- put in the new thisbdytime
+ thisbdytime(itime) = udtime(1)
+ time_name = 'md___thisbdytimee_x_t_d_o_m_a_i_n_m_e_t_a_data_'

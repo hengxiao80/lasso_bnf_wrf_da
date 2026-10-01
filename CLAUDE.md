@@ -31,8 +31,14 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   15-min output, ~1.1 TB per run; `theta_m0` ran on `batch_all` in 3 h 54 min).
 - Verified against sey's runs: ungrib and metgrid outputs identical, and our `hybrid_opt=2`
   `wrfinput`/`wrfbdy` bit-identical to his.
+- 5-member DA pilot (`theta_m0` setup) in `cases/20250520/da_theta_m0/`, scripts in `scripts/da/`, step
+  list and all results/decisions in `notes/da_5member_pilot_steps.md`. Done (2026-10-01): hourly mean
+  `wrfinput`, WRFDA perturbation bank (15 draws), 5 centered initial members, per-member `wrfbdy`
+  (patched `pert_wrf_bc`), restart tests. Members cycle with **true WRF restarts**; DART works on a
+  small file extracted from `wrfrst` (`scripts/da/wrfrst_dart.py`). Next: boundary test (step 8),
+  MADIS observations, `input.nml`, cycle scripts.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
-  conversion, perturbation bank, ensemble, and the NCEP/prepbufr conventional-observation
+  conversion, and the NCEP/prepbufr conventional-observation
   pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —
   already called for in `initial_plan_from_codex/` Phase 2 Steps 2E-2H to bring in the
   HRRRv4-CONUS conventional-observation families, reconfirmed by the user on 2026-09-22.
@@ -80,9 +86,10 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   Two known fixes are in `patches/`.
 - Slurm reports a job `COMPLETED` even when `srun` was killed, since the script's last commands still
   ran. Check the logs (`SUCCESS COMPLETE WRF` / `REAL_EM INIT`).
-- Keep the UCX settings (`UCX_TLS=self,sm,ud`, `UCX_UD_MLX5_RX_QUEUE_LEN=16384`) in every WRF/real
-  job script. Without them the larger 500-m runs fail on MPI communication. They make no speed
-  difference at 2.5 km.
+- Keep each job type's UCX setting, copied from the existing scripts, and don't mix them. `wrf.exe`
+  jobs (`slurm.wrf`): `UCX_TLS=self,sm,ud` and `UCX_UD_MLX5_RX_QUEUE_LEN=16384`; without them the
+  larger 500-m runs fail on MPI communication (no speed difference at 2.5 km). `real.exe` jobs
+  (`slurm.real`): `UCX_TLS=rc,xpmem,self`, as in sey's real.exe job.
 - PnetCDF is compiled in but troublesome. Quilting with PnetCDF crashes at startup, and quilting with
   plain netCDF gives no overlap. Use `io_form_history = 2` with `use_netcdf_classic = .true.`.
   Compressed netCDF-4 output costs ~45 s per write (single-threaded deflate) versus ~5 s for classic.

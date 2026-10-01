@@ -1,0 +1,34 @@
+#!/bin/bash
+# DRAFT for review -- not submitted.
+# One WRFDA RANDOMCV draw (pilot step 3): scripts/da/run_wrfda_draw.sh writes
+# perts/work/draw_NNN/wrfvar_output from the 05-20 00Z mean wrfinput. Test with draw 1 first:
+#   sbatch --export=ALL,DRAW=1 slurm.pert_draw
+# Step 4 runs the bank as an array of this job (--array=1-15, DRAW from SLURM_ARRAY_TASK_ID).
+# One node, 16 MPI ranks (the tutorial uses 4 on a much smaller grid; ours is 550x390x150).
+#SBATCH --job-name=pertdraw
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
+#SBATCH --output=slurm.pert_draw.%j.out
+#SBATCH --exclusive
+
+DRAW=${DRAW:-${SLURM_ARRAY_TASK_ID:-1}}
+
+date
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/env_wrf.sh
+
+# UCX as in the real.exe jobs (single-node, non-wrf.exe MPI job); wrf.exe jobs use a different
+# setting (see slurm.wrf). WRFDA is pure MPI here.
+export UCX_TLS=rc,xpmem,self
+export OMP_NUM_THREADS=1
+ulimit -s unlimited
+
+/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da/run_wrfda_draw.sh \
+   /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh \
+   "${DRAW}"
+status=$?
+date
+exit ${status}

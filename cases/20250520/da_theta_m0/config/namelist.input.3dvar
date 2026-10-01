@@ -1,0 +1,252 @@
+! Template for one WRFDA RANDOMCV draw (pilot step 3; step 4 loops it to build the perturbation bank).
+! Placeholders: @YYYY@ @MM@ @DD@ @HH@ (analysis time = time of the fg file), @SEED1@ @SEED2@ (random seeds;
+! the tutorial's gen_pert_bank.sh uses seed_array1 = YYYYMMDDHH and seed_array2 = 10 * draw number).
+! Scripts delete these '!' header lines before use, as make_mean_icbc.sh does.
+! Sources:
+!  - &time_control .. &namelist_quilt: our theta_m0 real.exe namelist (config/namelist.input.real),
+!    single domain, with three kinds of change: the times are the analysis time with run length 0; nproc_x/nproc_y
+!    removed (WRFDA runs on a few tasks); and entries absent from WRFDA's Registry removed (wif_input_opt,
+!    num_wif_levels, dyn_lightning_option, coul_pos/neg/neu). The vertical grid is read from fg.
+!  - &wrfvar1 .. &wrfvar18: DART tutorial template_nest/namelist.input.3dvar, unchanged except the placeholders.
+!    Its PERT_SCALING/HORIZ_SCALE/VERT_SCALE lines (outside any namelist group, never read) are left out.
+!    as1..as5 = (variance scaling, horizontal scale, vertical scale) for CV3 control variables:
+!    streamfunction, unbalanced velocity potential, unbalanced temperature, pseudo-RH, unbalanced surface pressure.
+!    Tutorial values as the first test (decision Q3 in notes/da_5member_pilot_steps.md).
+ &time_control
+ run_days                            = 0,
+ run_hours                           = 0,
+ run_minutes                         = 0,
+ run_seconds                         = 0,
+ start_year                          = @YYYY@,
+ start_month                         = @MM@,
+ start_day                           = @DD@,
+ start_hour                          = @HH@,
+ start_minute                        = 00,
+ start_second                        = 00,
+ end_year                            = @YYYY@,
+ end_month                           = @MM@,
+ end_day                             = @DD@,
+ end_hour                            = @HH@,
+ end_minute                          = 00,
+ end_second                          = 00,
+ interval_seconds                    = 3600
+ input_from_file                     = .true.,
+ history_interval                    = 15,
+ frames_per_outfile                  = 1,
+ restart                             = .false.,
+ restart_interval                    = 7200,
+ io_form_history                     = 2
+ io_form_restart                     = 2
+ io_form_input                       = 2
+ io_form_boundary                    = 2
+ debug_level                         = 0
+/
+
+ &domains
+ time_step                           = 5,
+ time_step_fract_num                 = 0,
+ time_step_fract_den                 = 2,
+ max_dom                             = 1,
+ e_we                                = 550,
+ e_sn                                = 390,
+ e_vert                              = 150,
+ p_top_requested                     = 1800,
+ max_dz                              = 1000.
+ auto_levels_opt                     = 2
+ dzbot                               = 25.
+ dzstretch_s                         = 1.05
+ dzstretch_u                         = 1.05
+ num_metgrid_levels                  = 51,
+ num_metgrid_soil_levels             = 9,
+ dx                                  = 2500,
+ dy                                  = 2500,
+ grid_id                             = 1,
+ parent_id                           = 0,
+ i_parent_start                      = 1,
+ j_parent_start                      = 1,
+ parent_grid_ratio                   = 1,
+ parent_time_step_ratio              = 1,
+ feedback                            = 0,
+ smooth_option                       = 0
+ /
+
+ &physics
+ physics_suite                       = 'CONUS'
+ mp_physics                          = 28,
+ do_radar_ref                        = 1,
+ cu_physics                          = 0,
+ ra_lw_physics                       = -1,
+ ra_sw_physics                       = -1,
+ bl_pbl_physics                      = -1,
+ sf_sfclay_physics                   = -1,
+ sf_surface_physics                  = -1,
+ radt                                = 3,
+ bldt                                = 0,
+ cudt                                = 0,
+ icloud                              = 1,
+ num_land_cat                        = 21,
+ sf_urban_physics                    = 0,
+ aer_opt                             = 0,
+ use_aero_icbc                       = .true.,
+ use_rap_aero_icbc                   = .false.,
+ qna_update                          = 0,
+ lightning_option                    = 0,
+ lightning_dt                        = 60,
+/
+
+ &fdda
+ /
+
+ &dynamics
+ hybrid_opt                          = 0,
+ use_theta_m                         = 0,
+ w_damping                           = 0,
+ diff_opt                            = 1,
+ km_opt                              = 4,
+ diff_6th_opt                        = 0,
+ diff_6th_factor                     = 0.12,
+ base_temp                           = 290.
+ damp_opt                            = 3,
+ zdamp                               = 5000.,
+ dampcoef                            = 0.2,
+ khdif                               = 0,
+ kvdif                               = 0,
+ non_hydrostatic                     = .true.,
+ moist_adv_opt                       = 2,
+ scalar_adv_opt                      = 2,
+ tracer_adv_opt                      = 2,
+ gwd_opt                             = 0,
+ tracer_opt                          = 5,
+ /
+
+ &bdy_control
+ spec_bdy_width                      = 10,
+ specified                           = .true.,
+ have_bcs_moist                      = .true.,
+ have_bcs_scalar                     = .true.,
+ /
+
+ &grib2
+ /
+
+ &namelist_quilt
+ nio_tasks_per_group = 0,
+ nio_groups = 1,
+ /
+
+ &wrfvar1
+ check_max_iv_print                  = .false.,
+ write_increments                    = .false.,
+ /
+
+ &wrfvar2
+ /
+
+ &wrfvar3
+ /
+ &wrfvar4
+ use_synopobs                        = .false.,
+ use_shipsobs                        = .false.,
+ use_metarobs                        = .false.,
+ use_soundobs                        = .false.,
+ use_pilotobs                        = .false.,
+ use_airepobs                        = .false.,
+ use_geoamvobs                       = .false.,
+ use_polaramvobs                     = .false.,
+ use_bogusobs                        = .false.,
+ use_buoyobs                         = .false.,
+ use_profilerobs                     = .false.,
+ use_satemobs                        = .false.,
+ use_gpspwobs                        = .false.,
+ use_gpsrefobs                       = .false.,
+ use_qscatobs                        = .false.,
+ use_radarobs                        = .false.,
+ use_radar_rv                        = .false.,
+ use_radar_rf                        = .false.,
+ use_airsretobs                      = .false.,
+ /
+
+ &wrfvar5
+ check_max_iv                        = .false.,
+ put_rand_seed                       = .true.,
+/
+
+ &wrfvar6
+ max_ext_its                         = 1
+ ntmax                               = 200,
+ eps                                 = 0.01,
+ /
+
+ &wrfvar7
+ cv_options                          = 3,
+ as1                                 = 0.001, 0.5, 0.5,
+ as2                                 = 0.001, 0.5, 0.5,
+ as3                                 = 0.1,  0.7, 0.7,
+ as4                                 = 0.01, 0.5, 0.5,
+ as5                                 = 0.5, 0.5, 0.5,
+ rf_passes                           = 6,
+ var_scaling1                        = 1.0,
+ var_scaling2                        = 1.0,
+ var_scaling3                        = 1.0,
+ var_scaling4                        = 1.0,
+ var_scaling5                        = 1.0,
+ len_scaling1                        = 1.0,
+ len_scaling2                        = 1.0,
+ len_scaling3                        = 1.0,
+ len_scaling4                        = 1.0,
+ len_scaling5                        = 1.0,
+ je_factor                           = 1.0,
+ /
+
+ &wrfvar8
+ /
+
+ &wrfvar9
+ trace_use                           = .false.,
+ trace_memory                        = .false.,
+ trace_all_pes                       = .false.,
+ trace_csv                           = .false.,
+ use_html                            = .false.,
+ /
+ &wrfvar10
+ /
+
+ &wrfvar11
+ cv_options_hum                      = 1,
+ check_rh                            = 1,
+ set_omb_rand_fac                    = 1.0,
+ seed_array1                         = @SEED1@,
+ seed_array2                         = @SEED2@,
+ /
+
+ &wrfvar12
+ /
+
+ &wrfvar13
+ vert_corr                           = 2,
+ vertical_ip                         = 0,
+ vert_evalue                         = 1,
+ max_vert_var1                       = 99.0,
+ max_vert_var2                       = 99.0,
+ max_vert_var3                       = 99.0,
+ max_vert_var4                       = 99.0,
+ max_vert_var5                       = 0.0,
+ /
+
+ &wrfvar14
+ /
+
+ &wrfvar15
+ num_pseudo                          = 0,
+ /
+
+ &wrfvar16
+ /
+
+ &wrfvar17
+ analysis_type                       = 'RANDOMCV',
+ /
+
+ &wrfvar18
+ analysis_date                       = '@YYYY@-@MM@-@DD@_@HH@:00:00.0000',
+ /

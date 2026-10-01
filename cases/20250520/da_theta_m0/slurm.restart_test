@@ -1,0 +1,55 @@
+#!/bin/bash
+# Restart test (pilot step 7): can WRF restart from its own wrfout with the 65 iofields fields?
+#   A: 30 min from the mean 05-20 00Z wrfinput, history every 15 min (tests/restart/continuous)
+#   B: 15 min from A's 00:15 wrfout used as wrfinput_d01 (tests/restart/restarted)
+# Both use the 2-record mean boundary subset; B starts mid-record, which WRF handles itself
+# (update_wrf_bc is tested separately in step 8). Then compare_restart.py compares them.
+# 8 nodes, 16 x 8 decomposition: the per-member layout assumed in the cost estimate; the
+# rsl timings set the nodes per member (Q7).
+#   sbatch slurm.restart_test
+#SBATCH --job-name=rst520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.restart_test.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0/config/experiment.sh
+source ${EXP_SH}
+TEST_DIR=${EXP_DIR}/tests/restart
+BDY=${EXP_DIR}/bdy/wrfbdy_d01_mean_2025-05-20_00_2h
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+set -e
+
+# wrf.exe UCX settings, as in the existing slurm.wrf scripts; don't mix with real.exe's.
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+${PROJECT_DIR}/scripts/da/run_wrf_segment.sh ${EXP_SH} ${TEST_DIR}/continuous \
+   2025-05-20_00:00:00 1800 ${MEAN_DIR}/wrfinput_d01_2025-05-20_00_00_00 ${BDY} 16 8
+${PROJECT_DIR}/scripts/da/run_wrf_segment.sh ${EXP_SH} ${TEST_DIR}/restarted \
+   2025-05-20_00:15:00 900 ${TEST_DIR}/continuous/wrfout_d01_2025-05-20_00_15_00 ${BDY} 16 8
+
+for d in continuous restarted; do
+   echo "== ${d}: rsl.error.0000 warnings, and timing"
+   grep -i -E 'warn|missing|not found|iofields|error' ${TEST_DIR}/${d}/rsl.error.0000 | sort | uniq -c | head -30 || true
+   grep 'Timing for main' ${TEST_DIR}/${d}/rsl.error.0000 | awk '{print $9}' | \
+      awk '{n++; s+=$1; if (n==1) f=$1} END {printf "   %d steps, first %.2f s, mean of the rest %.3f s\n", n, f, (s-f)/(n-1)}'
+   grep 'Timing for Writing' ${TEST_DIR}/${d}/rsl.error.0000 | awk '{printf "   %s %s s\n", $4, $(NF-2)}'
+   grep 'Timing for processing wrfinput' ${TEST_DIR}/${d}/rsl.error.0000 || true
+done
+
+${PROJECT_DIR}/.venv/bin/python ${PROJECT_DIR}/scripts/da/compare_restart.py \
+   ${TEST_DIR}/continuous ${TEST_DIR}/restarted ${CONFIG_DIR}/iofields_cycle.txt
+date

@@ -24,6 +24,10 @@ cases/**/*
 !cases/*/*/slurm.wrf
 !cases/*/*/real/namelist.input
 !cases/*/*/real/slurm.real
+# DA experiments (da_*): configuration and job scripts only; mean/, perts/, bdy/, run/, output/ stay out
+!cases/*/da_*/config/*
+!cases/*/da_*/slurm.*
+cases/*/da_*/slurm.*.out
 # I/O and decomposition test variants
 !cases/*/iotest/submit_chain*.sh
 !cases/*/iotest/*/namelist.input
