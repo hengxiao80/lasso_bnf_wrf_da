@@ -3,11 +3,15 @@
 Usage: .venv/bin/python scripts/da/build_member_bdy.py <exp_dir> [--start 2025-05-20_00:00:00]
            [--hours 2] [--nmem 5] [--members 1 2 ...] [--jobs 5] [--zero-pert]
            [--pert-template perts/members/pert_mem{mem:03d}.nc] [--pert-wrf-bc PATH]
+           [--no-hydrostatic-ph]
 
 1. Subset: copies the records starting at --start, --start + 1 h, ... (--hours of them) from
    exp_dir/mean/wrfbdy_d01 into exp_dir/bdy/wrfbdy_d01_mean_<start>_<hours>h (created once).
 2. For each member and each record h: writes small temporary states (only the fields pert_wrf_bc
-   reads) for mean_h + pert and mean_(h+1) + pert, with T = THM and QVAPOR >= 0, and runs the
+   reads) for mean_h + pert and mean_(h+1) + pert, with T = THM and QVAPOR >= 0, and PH = mean PH +
+   the hydrostatic PH increment from the perturbed MU, THM and QVAPOR (check_hydrostatic_balance.py;
+   unless --no-hydrostatic-ph: the bank has no PH, and an unperturbed PH is out of hydrostatic
+   balance with the perturbed T and MU in the boundary zone), and runs the
    patched pert_wrf_bc on that record of a copy of the subset. Record h then runs from the
    perturbed mean at h to the perturbed mean at h+1. Output: exp_dir/bdy/wrfbdy_d01_memNNN.
    Fields pert_wrf_bc doesn't refit (hydrometeors, aerosol numbers, ...) stay as in the mean file.
@@ -28,6 +32,8 @@ from concurrent.futures import ProcessPoolExecutor
 
 import netCDF4
 import numpy as np
+
+from check_hydrostatic_balance import Grid, read_state
 
 PERT_FIELDS = ["U", "V", "THM", "QVAPOR", "MU"]
 STATE_FIELDS = ["Times", "U", "V", "W", "PH", "T", "QVAPOR", "MU", "MUB",
@@ -66,8 +72,9 @@ def make_subset(src_path, out_path, start, hours):
     print(f"subset: records {first}..{first + hours - 1} ({start}, {hours} h) -> {out_path}")
 
 
-def write_state(mean_path, pert_path, out_path):
-    """Small wrfinput-like file with the fields pert_wrf_bc reads; T = THM, QVAPOR >= 0."""
+def write_state(mean_path, pert_path, out_path, hydrostatic_ph=True):
+    """Small wrfinput-like file with the fields pert_wrf_bc reads; T = THM, QVAPOR >= 0, and (with a
+    perturbation) PH + the hydrostatic PH increment."""
     with netCDF4.Dataset(mean_path) as mean, \
          netCDF4.Dataset(out_path, "w", format="NETCDF3_64BIT_OFFSET") as out:
         out.setncatts({a: mean.getncattr(a) for a in mean.ncattrs()})
@@ -96,6 +103,12 @@ def write_state(mean_path, pert_path, out_path):
         out["T"][:] = thm
         if pert is not None:
             pert.close()
+            if hydrostatic_ph:
+                grid = Grid(mean_path)
+                new = {"PH": np.asarray(out["PH"][0], np.float64), "MU": np.asarray(out["MU"][0], np.float64),
+                       "THM": thm[0], "QVAPOR": np.asarray(out["QVAPOR"][0], np.float64)}
+                dph = grid.ph_hydro(new) - grid.ph_hydro(read_state(mean_path))
+                out["PH"][0] = new["PH"] + dph
 
 
 def build_member(args, mem, subset_path, hour_times):
@@ -119,8 +132,8 @@ def build_member(args, mem, subset_path, hour_times):
             pert_path = None if mem == 0 else \
                 os.path.join(args.exp_dir, args.pert_template.format(mem=mem, hour=k))
             states.append((mean_path, pert_path))
-        write_state(*states[0], os.path.join(work, "wrfinput_this"))
-        write_state(*states[1], os.path.join(work, "wrfinput_next"))
+        write_state(*states[0], os.path.join(work, "wrfinput_this"), not args.no_hydrostatic_ph)
+        write_state(*states[1], os.path.join(work, "wrfinput_next"), not args.no_hydrostatic_ph)
         res = subprocess.run([args.pert_wrf_bc], cwd=work, capture_output=True, text=True)
         with open(os.path.join(work, f"pert_wrf_bc_{h:02d}.log"), "w") as f:
             f.write(res.stdout + res.stderr)
@@ -144,6 +157,7 @@ def main():
     p.add_argument("--zero-pert", action="store_true")
     p.add_argument("--pert-template", default="perts/members/pert_mem{mem:03d}.nc")
     p.add_argument("--pert-wrf-bc", default=PERT_WRF_BC)
+    p.add_argument("--no-hydrostatic-ph", action="store_true")
     args = p.parse_args()
 
     t0 = dt.datetime.strptime(args.start, FMT)
