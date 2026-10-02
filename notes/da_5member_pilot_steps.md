@@ -110,6 +110,7 @@ Each step lists what it does, what it needs, the script and its status, and the 
     - Round trip without change (B0) ≈ plain restart (U 0.001 m/s, P 0.8 Pa, PBLH 28 m RMS at 00:30: rounding growth).
     - With vs without the P/AL recompute (B2 vs B1): same to rounding growth (U 0.0016 m/s, MU 0.06 Pa), same noise to 1 %. Kept anyway: cheap, consistent file, like a cold start.
     - Adjustment: domain-mean |dpsfc/dt| 4,690 hPa/3h at step 2, 1,520 at step 8, 223 over minutes 1–5 (93 without the increment), back to 94 vs 90 over minutes 5–15. |dμ/dt| only 10–15 % above the unperturbed run. `diag_print` step 1 is meaningless on a restart (uninitialized previous PSFC).
+    - Cause of the adjustment: the unchanged PH, i.e. hydrostatic imbalance, not the MU scaling. See "Initial adjustment in the fake-increment test" in Sec. 4.
   - **Timing (8 nodes, 16 × 8):** 0.34–0.40 s per 5-s step (`theta_m0` on 16 nodes: 0.24 s), so halving the nodes costs only 1.4–1.6× per step. Cold-start segment from `wrfout`: 92 s (6.7 s input, 10.8 s first step, 6.4 s per `wrfout`). True-restart segment: 128 s (22.6 s reading `wrfrst`, 5.4 s first step, 18.1 s writing `wrfrst`, 6.4 s `wrfout`). Q7 still open.
 
 **Step 8. Boundary test (2.12).** (S, minutes; can share the job with step 7)
@@ -175,7 +176,7 @@ Per cycle, from `obs_seq.final`, `obs_diag` (15-min bins) and the member files:
 | Q5 | Boundary perturbation pattern over time | step 6 | **Decided (user, 2026-09-29): settle by experiment.** The 1-hour pilot uses option A (same bank draw for every hour, the plan's pilot policy). The builder takes a member × hour → bank-draw table, so option B (5 distinct draws per hour from the 15, centered per hour) needs no new code. Experiment after the pilot: see below |
 | Q6 | Member-boundary builder | step 6 | Loop the patched `pert_wrf_bc` over records; not a new Python re-implementation |
 | Q7 | Nodes per member and job structure | steps 7, 12 | **Decided (user, 2026-09-29): after the step 7 timing.** Options then: one long allocation (about 40–48 nodes) with the cycle loop inside, or one allocation per cycle from a login-node driver |
-| Q8 | State vector and which variables update | step 11 | **Partly decided (user, 2026-10-01): T2, Q2, U10, V10 and PSFC in the state with `NO_COPY_BACK`** for now; may be switched to `UPDATE` in later tests. Hydrometeors: follow HRRRv4, worked out later. Still open: whether MU and PH are written back (needed for surface-pressure obs to change the column mass) and W. See "Q8: how DART uses the state variables" below |
+| Q8 | State vector and which variables update | step 11 | **Partly decided (user, 2026-10-01): T2, Q2, U10, V10 and PSFC in the state with `NO_COPY_BACK`** for now; may be switched to `UPDATE` in later tests. Hydrometeors: follow HRRRv4, worked out later. Still open: whether MU and PH are written back (needed for surface-pressure obs to change the column mass) and W. See "Q8: how DART uses the state variables" below; for PH, the hydrostatic check in "Initial adjustment in the fake-increment test" |
 | Q9 | Aircraft superobbing | step 10 | Off at first, since with 5 members and ~1,400 ACARS reports per 15 min the cost is small |
 | Q10 | Output retention and `stages_to_write` | steps 11–12 | **Decided (user, 2026-10-01): the pilot and its first extensions keep everything per cycle** in `output/<time>/`: each member's prior (the 15-min forecast) and analysis, each member's refit boundary copy, ensemble mean and sd at all stages, `obs_seq.final`, inflation files. For 5 members ≈ 40 GB per cycle (≈ 160 GB for the 1-hour pilot). Reason: member increments can be inspected, single segments rerun and failures debugged; the analyses can't be recovered otherwise, since `filter` writes them in place into `run/memNNN/wrfinput_d01` and the next segment overwrites it. **Long and 50-member runs: decide later** (≈ 18 TB/day for member analyses alone at 50 members × 96 cycles), e.g. members only hourly, DART state variables only, or `nccopy` compression. The earlier recommendation (only the latest member file, mean/sd at all stages) is one of those options. **Note (2026-10-01, true restarts):** a member `wrfrst` is 13.1 GB (vs 4.4 GB `wrfout`), so full priors + analyses would be ≈ 130 GB per cycle (≈ 520 GB for the pilot); the 0.9-GB DART-facing files (prior and analysis) plus the 15-min `wrfout` are the cheaper record, with the latest `wrfrst` per member kept for restarting. To settle before step 12 |
 | Q11 | 00Z radiosondes (already in HRRR's analysis) | step 10 | Drop those launched at or before 00Z; check the time span of the 00Z soundings first |
@@ -207,6 +208,44 @@ History: on 2026-10-01 the user first chose to carry `PH`, `P` and `PSFC` in the
 - carry `PH` (and `P`, `PSFC`) from WRFDA in the bank, or recompute them after scaling;
 - `rebalance = 1` in the member WRF runs (first check what `rebalance_cycl` does, including side effects such as its treatment of `PSFC`);
 - one scale factor for all fields (e.g. 1.3), or no post-scaling with the amplitude set through `as1`–`as5` (×1.3 in amplitude = ×1.69 in variance), to keep CV3's wind–mass balance.
+
+### Initial adjustment in the fake-increment test: hydrostatic imbalance from the unchanged PH (checked 2026-10-01)
+
+**Question.** The modified-restart test (step 7, job 1047496) showed a large initial surface-pressure adjustment. Was the cause the tutorial's MU scaling (×0.6 vs ×1.3), or the missing PH/P perturbation (Q16/Q17)?
+
+**The increment used.** `perts/members/pert_mem001.nc` (draw 4), already scaled (1.3 U/V/THM/QVAPOR, 0.6 MU) and centered (file attributes `scale_factors`, `centered = 1`). RMS versus the raw draw: U 0.52 vs 0.48 m/s, THM 0.98 vs 0.89 K, MU 33 vs 77 Pa, i.e. the scale factor times the centering reduction. PH was not perturbed.
+
+**Diagnostic:** `scripts/da/check_hydrostatic_balance.py <static> <prior> <state> ...` (22 s on the login node). Run on the test's input, with the 00:15 restart file as both static file and prior: `tests/true_restart/continuous/wrfrst_d01_2025-05-20_00_15_00` and `tests/restart_increment/B2_recompute/input/dart_d01.nc`. It computes the non-hydrostatic pressure departure p_nh = p from the equation of state (density from PH and MU, hypsometric form as in `wrfrst_dart.py`) − moist hydrostatic pressure from MU and QVAPOR:
+
+| State | p_nh RMS, all levels | RMS at k = 0 / 10 / 30 / 60 | Change from unperturbed |
+|---|---|---|---|
+| Unperturbed WRF state at 00:15 | 25 Pa | 44 / 43 / 41 / 19 | — |
+| Fake increment, PH unchanged (as tested) | 205 Pa | 406 / 445 / 256 / 104 | 205 Pa |
+| Fake increment + hydrostatic PH increment | 25 Pa | 43 / 43 / 41 / 19 | 0.1 Pa |
+
+The 25-Pa baseline is partly discretization in the diagnostic; the change is what matters. "Hydrostatic PH increment" = PH recomputed hydrostatically from the perturbed state minus PH recomputed from the unperturbed state, added to the model's PH, so the model's own non-hydrostatic part is kept. It is 7.7 m RMS (max 31 m, 11.5 m RMS at the top).
+
+**Interpretation.**
+- With PH (so density) fixed, +1 K of THM raises the EOS pressure by γ·δθ/θ·p ≈ 4 hPa at low levels. The lowest-level pressure changes by 399 Pa RMS from the EOS, against 30 Pa from the hydrostatic MU change. The vertical pressure-gradient error is removed by vertical acoustic adjustment within seconds to minutes. That matches the spike (4,690 hPa/3h ≈ 2 hPa per 5-s step at step 2) and the small |dμ/dt| response: the adjustment is non-hydrostatic, not a column-mass one.
+- Recomputing P alone doesn't help: WRF rederives P from PH, MU and THM at the first acoustic step (`calc_p_rho`), which is why B1 and B2 matched. PH is what has to change.
+- **The MU scaling** (×0.6 vs ×1.3) affects wind–mass (CV3) balance, not hydrostatic balance. Its whole hydrostatic signal (30 Pa) is small next to the PH effect, so it is not the cause here. It may still add slower gravity-wave noise; test a single factor once PH is handled (Q16/Q17 options).
+
+**Confirmed in WRF (job 1047521, 2026-10-01): case `B3_hydroph`** = B2 plus the hydrostatic PH increment (`restart_increment_test.py perturb --hydrostatic-ph`; `wrfrst_dart.py insert` unchanged). Same 8 nodes and 15-min restart segment. Domain-mean |dpsfc/dt| in hPa/3h (from `diag_print`):
+
+| Case | Steps 2–8 | Minute 0–1 | Minutes 1–5 | Minutes 5–15 | \|dμ/dt\| (same windows) |
+|---|---|---|---|---|---|
+| B0 (no increment) | 95 … 95 | 95 | 93 | 90 | 44, 40, 35 |
+| B2 (PH unchanged) | 4,640 3,754 2,550 2,931 2,417 1,614 1,521 | 2,131 | 223 | 94 | 51, 44, 37 |
+| B3 (hydrostatic PH) | 231 340 254 288 259 199 152 | 200 | 97 | 91 | 50, 44, 37 |
+
+- The spike drops about 20× and is gone after the first minute. Minutes 1–5 are back at the B0 level. What remains in the first minute (about 2× B0) is presumably the horizontal (wind–mass) part of the increment, e.g. the MU scaling. That's untested.
+- |dμ/dt| is unchanged, as expected for a vertical adjustment.
+- The 00:30 states of B2 and B3 are the same: RMS difference from B0 is equal for U V W T QVAPOR MU PSFC T2 PBLH, with PH 51.5 vs 51.4 and RAINNC 0.074 vs 0.076. In this test the vertical shock is transient and doesn't change the 15-min forecast. In cycling it would still put acoustic noise into the first minute of every segment, and it costs nothing to avoid.
+
+**Consequences.**
+- **Initial members (cold start at 00:00): fix needed.** They start with unperturbed PH, and with `rebalance = 0` WRF keeps PH as read (`start_em.F:797–807`), so the first segment gets the same imbalance. WRFDA's own PH perturbation fits only the unscaled draw, not the scaled and centered one. Options: recompute PH in `make_initial_members.py` (hydrostatic increment as above), or `rebalance = 1` for the first segment. Not done yet.
+- **Cycling: check first.** PH is a required DART state variable (`model_mod.f90:7669`, "PH is always a required field"). It is `UPDATE` in the tutorial template and in our draft (`dart/mmc/input.nml`), and `wrfrst_dart.py insert` writes it back by default. So DART's PH moves with the analysis, and the imbalance should be much smaller than in this test. It is hydrostatic only as far as the ensemble covariances carry the relation (vertical localization, 5-member sampling noise, EOS nonlinearity). `rebalance` can't fix it: it acts only on cold starts (inside `IF (.not. config_flags%restart)`, `start_em.F:655`), and we cycle with true restarts.
+- **Check at the first real `filter` (step 13):** compare DART's PH increment with the hydrostatic PH increment from the analyzed MU, THM and QVAPOR, and compute the p_nh change as above: `check_hydrostatic_balance.py <member wrfrst> <prior DART file> <analysis DART file>` (it prints both increments and their difference). If it is small next to the ~25-Pa baseline, keep DART's PH. If not, add an option to `wrfrst_dart.py insert` that replaces DART's PH increment with the hydrostatic one (what WRFDA does in `da_transfer_xatowrf`). This would also settle the PH part of Q8.
 
 ### Q8: how DART uses the state variables (checked 2026-10-01)
 

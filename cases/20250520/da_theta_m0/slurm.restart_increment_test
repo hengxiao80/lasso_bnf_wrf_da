@@ -5,9 +5,11 @@
 #   B0_roundtrip    extract + insert without change (recompute on): should match the plain restart
 #   B1_norecompute  + pert_mem001 (U V THM QVAPOR MU) as a fake increment, P/AL left as in the file
 #   B2_recompute    same increment, AL/ALT/P/P_HYD recomputed
+#   B3_hydroph      as B2, plus the hydrostatic PH increment (PH was left unchanged in B1/B2)
 # Each runs 15 min (00:15 -> 00:30) with diag_print = 1. The report compares the domain-mean
 # |dpsfc/dt| series (noise after the update) and the 00:30 states, with B0 as the reference.
-#   sbatch slurm.restart_increment_test
+#   sbatch slurm.restart_increment_test                 (B0-B2, job 1047496)
+#   sbatch --export=ALL,CASES=B3_hydroph slurm.restart_increment_test   (B3 only; B0-B2 runs kept)
 #SBATCH --job-name=incr520
 #SBATCH -A cli120
 #SBATCH --partition=batch_all
@@ -41,7 +43,8 @@ export OMP_PROC_BIND=true
 export OMP_STACKSIZE=64000000
 ulimit -s 64000000
 
-for case in B0_roundtrip B1_norecompute B2_recompute; do
+CASES=${CASES:-"B0_roundtrip B1_norecompute B2_recompute"}
+for case in ${CASES}; do
    d=${TEST_DIR}/${case}
    mkdir -p ${d}/input
    cp ${RST} ${d}/input/${RST_NAME}
@@ -51,6 +54,8 @@ for case in B0_roundtrip B1_norecompute B2_recompute; do
       B1_*) ${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py perturb ${d}/input/dart_d01.nc ${PERT}
             opt=--no-recompute ;;
       B2_*) ${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py perturb ${d}/input/dart_d01.nc ${PERT} ;;
+      B3_*) ${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py perturb ${d}/input/dart_d01.nc ${PERT} \
+               --hydrostatic-ph ${d}/input/${RST_NAME} ;;
    esac
    echo "== ${case}: insert ${opt}"
    ${PY} ${PROJECT_DIR}/scripts/da/wrfrst_dart.py insert ${d}/input/dart_d01.nc ${d}/input/${RST_NAME} ${opt}
@@ -58,8 +63,11 @@ for case in B0_roundtrip B1_norecompute B2_recompute; do
       2025-05-20_00:15:00 900 ${d}/input/${RST_NAME} ${BDY} 16 8
 done
 
-${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py report ${TEST_DIR}/B0_roundtrip/run \
-   ${TEST_DIR}/B1_norecompute/run ${TEST_DIR}/B2_recompute/run
+runs=""
+for case in B1_norecompute B2_recompute B3_hydroph; do
+   [ -f ${TEST_DIR}/${case}/run/wrfout_d01_2025-05-20_00_30_00 ] && runs="${runs} ${TEST_DIR}/${case}/run"
+done
+${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py report ${TEST_DIR}/B0_roundtrip/run ${runs}
 echo "== B0 vs the plain restart (tests/true_restart/restarted)"
 ${PY} ${PROJECT_DIR}/scripts/da/restart_increment_test.py report ${EXP_DIR}/tests/true_restart/restarted \
    ${TEST_DIR}/B0_roundtrip/run
