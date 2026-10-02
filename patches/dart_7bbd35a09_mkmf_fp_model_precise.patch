@@ -1,0 +1,11 @@
+--- build_templates/mkmf.template.intel.linux
++++ build_templates/mkmf.template
+@@ -134,7 +134,7 @@
+ 
+ INCS = -I$(NETCDF)/include
+ LIBS = -L$(NETCDF)/lib -lnetcdff -lnetcdf
+-FFLAGS  = -O -assume buffered_io $(INCS)
++FFLAGS  = -O -fp-model precise -assume buffered_io $(INCS)
+ LDFLAGS = $(FFLAGS) $(LIBS)
+ 
+ # for development or debugging, use this instead:

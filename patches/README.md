@@ -144,3 +144,25 @@ pinned upstream commit, why it was needed, and how it was applied.
   need the path as listed in `quickbuild.sh`). Clean compile; log `models/wrf/work/quickbuild_wrf_bc_patch.log`.
   The previous (stock, 18 September) executables are kept in `models/wrf/work/stock_20260918/`.
   Behavior not yet tested: pilot step 8 (boundary test).
+
+## dart_7bbd35a09_mkmf_fp_model_precise.patch
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), file
+  `build_templates/mkmf.template`. That file is git-ignored by DART; ours is a copy of the stock
+  `build_templates/mkmf.template.intel.linux`, and the patch is written against that stock template. Affects
+  every DART executable built with `mkmf`/`quickbuild.sh` (`filter`, the WRF_BC tools, the MADIS converters, ...),
+  not the NCEP `prep_bufr` programs (`install.sh`, own flags).
+- **Why:** the stock flags are `-O` only, so ifort uses its default `-fp-model fast=1`. That lets vectorized
+  loops do divisions that are not correctly rounded and replace a division by a constant with multiplication by
+  its reciprocal. How a vectorized loop is split depends on array alignment, so results can differ in the last bits
+  between runs of the same binary. WRF, `real.exe` and WRFDA all build with `-fp-model precise`. Found while
+  explaining the few-ulp differences between the `pert_wrf_bc` zero-perturbation refit and `real.exe`'s
+  boundary file: the `module_couple_uv` loop compiled with `-O` reproduces `pert_wrf_bc` bit for bit, and with
+  `-O -fp-model precise` reproduces `real.exe` (`notes/da_5member_pilot_steps.md` step 6). The accuracy effect is
+  negligible (a few ulps); the reasons are run-to-run reproducibility and consistency with WRF. User's decision.
+- **Fix:** `FFLAGS = -O -assume buffered_io $(INCS)` → `FFLAGS = -O -fp-model precise -assume buffered_io $(INCS)`.
+- **Applied:** 1 October 2026, before `filter` was first run. Everything rebuilt with `./quickbuild.sh` in
+  `models/wrf/work` and `observations/obs_converters/MADIS/work` (logs `quickbuild_fp_precise.log` in each).
+  Clean builds (no `error #`); all 28 + 10 executables rebuilt, `filter` still linked with `mpif90`. Check: the
+  `pert_wrf_bc` zero-perturbation refit (`build_member_bdy.py --zero-pert`) is now bit-identical to the `real.exe`
+  boundary records in all 187 variables (before: up to 3 ulp in U/V values, 7 ulp in tendencies).
