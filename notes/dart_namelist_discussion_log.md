@@ -81,3 +81,33 @@ references in `notes/da_5member_pilot_steps.md`, "Q8: how DART uses the state va
   pressure obs can't change column mass without MU), W. Pilot plan Q8.
 - Related: `cutoff`, `special_localization_*` above; `wrf_state_bounds` (clamping, applied only
   to the `output` stage); `stages_to_write` (pilot plan Q10).
+
+## `&wrf_obs_preproc_nml` (`wrf_dart_obs_preprocess`): per-cycle screening — 2026-10-02
+
+The WRF-specific observation screening run before `filter`, once per cycle (pilot step 10,
+`scripts/da/make_cycle_obs.sh`, namelist in `da_theta_m0/config/input.nml.obs_preprocess`). Full
+results in `notes/da_5member_pilot_steps.md`, step 10.
+
+- **No time selection.** The program assumes all its input is valid for one analysis time (given
+  on stdin). The 15-min slicing is done beforehand with `obs_sequence_tool` to (t − 450 s, t + 450 s],
+  exactly `filter`'s window for `&model_nml :: assimilation_period_seconds = 900`
+  (`obs_model_mod.f90`). `overwrite_obs_time = .false.` keeps the real times; the tutorial's `.true.`
+  suits its 6-h bins.
+- **`obs_boundary = 5`** grid points matches the 1 + 4 boundary zone (`spec_zone`/`relax_zone`,
+  pilot Q18); 10 for 1 + 9. The test is asymmetric (5 rows west/south, effectively 6 east/north).
+- **`increase_bdy_error = .true.`, `obsdistbdy = 15`, `maxobsfac = 2.5`** (tutorial): the error σ is
+  multiplied by up to 2.5 at the edge, falling linearly to 1 at 15 rows (37.5 km); ×2.07 at the
+  innermost kept row. Applied to the error variance in the output `obs_seq`, so `filter` and
+  `obs_diag` see the inflated value.
+- **`sfc_elevation_check = .true.`, `sfc_elevation_tol = 300`** (plan): station elevation vs model
+  terrain. Related: `&model_nml :: sfc_elev_max_diff` (−1, off) does a similar check inside `filter`.
+- **`obs_pressure_top = 10000` Pa, `obs_height_top = 20000` m** (tutorial; model top 18 hPa).
+- **`superob_aircraft = .false.`**: open question Q9, kept open until after the pilot (user,
+  2026-10-02). `superob_sat_winds` applies once GOES winds are added (adaptation note 2.13).
+- **`include_sig_data = .true.`**: keep radiosonde significant levels, consistent with
+  `&convert_madis_rawin_nml` (step 9).
+- The program also needs `&model_nml` and `wrfinput_d01` (`static_init_model`, for grid position
+  and terrain); the state-variable list is irrelevant here.
+- Related: `&obs_kind_nml` (which types `filter` assimilates; step 11), `outlier_threshold`
+  (`&filter_nml`), `cutoff`/`special_localization_*` above.
+

@@ -1,0 +1,75 @@
+&wrf_obs_preproc_nml
+   file_name_input          = 'obs_seq.none',
+   file_name_output         = 'obs_seq.out',
+   sonde_extra              = 'obs_seq.rawin',
+   acars_extra              = 'obs_seq.acars',
+   metar_extra              = 'obs_seq.metar',
+   marine_sfc_extra         = 'obs_seq.marine',
+   land_sfc_extra           = 'obs_seq.land_sfc',
+   sat_wind_extra           = 'obs_seq.satwnd',
+   profiler_extra           = 'obs_seq.profiler',
+   gpsro_extra              = 'obs_seq.gpsro',
+   trop_cyclone_extra       = 'obs_seq.tc',
+   overwrite_obs_time       = .false.,
+   obs_boundary             = 5.0,
+   increase_bdy_error       = .true.,
+   maxobsfac                = 2.5,
+   obsdistbdy               = 15.0,
+   sfc_elevation_check      = .true.,
+   sfc_elevation_tol        = 300.0,
+   obs_pressure_top         = 10000.0,
+   obs_height_top           = 20000.0,
+   include_sig_data         = .true.,
+   tc_sonde_radii           = -1.0,
+   superob_aircraft         = .false.,
+   aircraft_horiz_int       = 36.0,
+   aircraft_pres_int        = 2500.0,
+   superob_sat_winds        = .false.,
+   sat_wind_horiz_int       = 100.0,
+   sat_wind_pres_int        = 2500.0,
+   overwrite_ncep_satwnd_qc = .false.,
+   overwrite_ncep_sfc_qc    = .false.,
+   /
+
+&model_nml
+   default_state_variables = .false.,
+   wrf_state_variables = 'U',     'QTY_U_WIND_COMPONENT',     'TYPE_U',    'UPDATE','999',
+                         'V',     'QTY_V_WIND_COMPONENT',     'TYPE_V',    'UPDATE','999',
+                         'W',     'QTY_VERTICAL_VELOCITY',    'TYPE_W',    'UPDATE','999',
+                         'PH',    'QTY_GEOPOTENTIAL_HEIGHT',  'TYPE_GZ',   'UPDATE','999',
+                         'THM',   'QTY_POTENTIAL_TEMPERATURE','TYPE_T',    'UPDATE','999',
+                         'MU',    'QTY_PRESSURE',             'TYPE_MU',   'UPDATE','999',
+                         'QVAPOR','QTY_VAPOR_MIXING_RATIO',   'TYPE_QV',   'UPDATE','999',
+                         'PSFC',  'QTY_SURFACE_PRESSURE',     'TYPE_PSFC', 'UPDATE','999',
+   wrf_state_bounds    = 'QVAPOR','0.0','NULL','CLAMP',
+   num_domains                 = 1,
+   calendar_type               = 3,
+   assimilation_period_seconds = 900,
+   vert_localization_coord     = 3,
+   center_search_half_length   = 500000.,
+   center_spline_grid_scale    = 10,
+   sfc_elev_max_diff           = -1.0,
+   circulation_pres_level      = 80000.0,
+   circulation_radius          = 108000.0,
+   allow_obs_below_vol         = .false.
+   /
+
+&obs_kind_nml
+   /
+
+&location_nml
+   /
+
+&obs_sequence_nml
+   write_binary_obs_sequence = .false.,
+   /
+
+&ensemble_manager_nml
+   /
+
+&utilities_nml
+   termlevel   = 1,
+   logfilename = 'dart_log.out',
+   nmlfilename = 'dart_log.nml',
+   write_nml   = 'file',
+   /
