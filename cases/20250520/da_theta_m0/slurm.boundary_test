@@ -1,0 +1,80 @@
+#!/bin/bash
+# Boundary test (pilot step 8): refit a member's boundary file at a segment start inside a record
+# (update_wrf_bc, patched) and restart WRF with it, as each cycle will.
+#   spinup   member 1 cold start 00:00 -> 00:15 from run/mem001/wrfinput_d01 with the pristine
+#            bdy/wrfbdy_d01_mem001, wrfrst at 00:15 (tests/boundary/spinup)
+# Then three restarts from copies of that wrfrst, 00:15 -> 01:00 (the end of the boundary record),
+# each through the DART-facing file (wrfrst_dart.py extract, [increment], insert) as after filter:
+#   R0_refit      no increment, refit boundary file (the plain cycle path)
+#   R1_refit      fake increment (pert_mem001 + hydrostatic PH, as B3 in step 7), refit boundary file
+#   R2_norefit    same increment, pristine boundary file (control: the edge mismatch the refit removes)
+# check_boundary_refit.py bdy checks the refit files against a float32 recompute of the tool;
+# check_boundary_refit.py runs compares the runs by distance from the edge and at the record end.
+# The 13-GB restart copies are deleted at the end; the spinup wrfrst is kept for reruns.
+#   sbatch slurm.boundary_test
+#SBATCH --job-name=bdy520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.boundary_test.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0/config/experiment.sh
+source ${EXP_SH}
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+TEST_DIR=${EXP_DIR}/tests/boundary
+BDY=${EXP_DIR}/bdy/wrfbdy_d01_mem001
+PERT=${PERTS_DIR}/members/pert_mem001.nc
+RST_NAME=wrfrst_d01_2025-05-20_00_15_00
+RST=${TEST_DIR}/spinup/${RST_NAME}
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+set -e
+
+# wrf.exe UCX settings, as in the existing slurm.wrf scripts; don't mix with real.exe's.
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+if [ ! -f ${RST} ]; then
+   RESTART=.false. RESTART_INTERVAL=15 ${DA}/run_wrf_segment.sh ${EXP_SH} ${TEST_DIR}/spinup \
+      2025-05-20_00:00:00 900 ${EXP_DIR}/run/mem001/wrfinput_d01 ${BDY} 16 8
+fi
+
+for case in R0_refit R1_refit R2_norefit; do
+   d=${TEST_DIR}/${case}
+   mkdir -p ${d}/input
+   cp ${RST} ${d}/input/${RST_NAME}
+   ${PY} ${DA}/wrfrst_dart.py extract ${d}/input/${RST_NAME} ${d}/input/dart_d01.nc
+   case ${case} in
+      R1_*|R2_*) ${PY} ${DA}/restart_increment_test.py perturb ${d}/input/dart_d01.nc ${PERT} \
+                    --hydrostatic-ph ${d}/input/${RST_NAME} ;;
+   esac
+   ${PY} ${DA}/wrfrst_dart.py insert ${d}/input/dart_d01.nc ${d}/input/${RST_NAME}
+   case ${case} in
+      *_refit) ${DA}/refit_member_bdy.sh ${d}/input/dart_d01.nc ${BDY} ${d}/bdy
+               echo "== ${case}: refit boundary file"
+               (cd ${DA} && ${PY} check_boundary_refit.py bdy ${BDY} ${d}/bdy/wrfbdy_d01 ${d}/input/dart_d01.nc)
+               case_bdy=${d}/bdy/wrfbdy_d01 ;;
+      *)       case_bdy=${BDY} ;;
+   esac
+   RESTART=.true. ${DA}/run_wrf_segment.sh ${EXP_SH} ${d}/run \
+      2025-05-20_00:15:00 2700 ${d}/input/${RST_NAME} ${case_bdy} 16 8
+   grep -i -E 'cfl|nan|error' ${d}/run/rsl.error.0000 | sort | uniq -c | head -10 || true
+done
+
+echo "== runs (reference R0_refit)"
+(cd ${DA} && ${PY} check_boundary_refit.py runs ${TEST_DIR}/R0_refit/run \
+   ${TEST_DIR}/R1_refit/run ${TEST_DIR}/R2_norefit/run --target-bdy ${BDY})
+rm -f ${TEST_DIR}/*/input/${RST_NAME}
+date

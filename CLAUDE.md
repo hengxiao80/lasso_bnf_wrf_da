@@ -35,8 +35,8 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   list and all results/decisions in `notes/da_5member_pilot_steps.md`. Done (2026-10-01): hourly mean
   `wrfinput`, WRFDA perturbation bank (15 draws), 5 centered initial members, per-member `wrfbdy`
   (patched `pert_wrf_bc`), restart tests. Members cycle with **true WRF restarts**; DART works on a
-  small file extracted from `wrfrst` (`scripts/da/wrfrst_dart.py`). Next: boundary test (step 8),
-  MADIS observations, `input.nml`, cycle scripts.
+  small file extracted from `wrfrst` (`scripts/da/wrfrst_dart.py`). Boundary refit test (step 8)
+  passed 2026-10-02 (`scripts/da/refit_member_bdy.sh`). Next: MADIS observations, `input.nml`, cycle scripts.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
   conversion, and the NCEP/prepbufr conventional-observation
   pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —
@@ -98,6 +98,9 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   `bnf_wrf_eval` expects.
 - Baseline settings: 16 nodes, 256 ranks x 8 threads, `nproc_x = nproc_y = 16`, ~4 h wall for 72 h
   of model time (15-min history, ~1.1 TB). A 16x32 automatic decomposition performed worse.
+- `spec_bdy_width = 10` alone gives WRF's default `spec_zone = 1`, `relax_zone = 4` (rows 5–10 of
+  `wrfbdy` unused), not the intended 1 + 9; inherited from sey's setup. All runs so far and the 5-member
+  pilot use 1 + 4; the 50-member DA switches to 1 + 9 (Q18 in `notes/da_5member_pilot_steps.md`).
 - `real.exe` with `use_netcdf_classic` unset writes compressed netCDF-4 input files, which is fine.
 
 ## External data and other repos
