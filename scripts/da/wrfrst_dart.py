@@ -1,6 +1,6 @@
 """Move the DART state between a WRF restart file and a small DART-facing file.
 
-Usage: .venv/bin/python scripts/da/wrfrst_dart.py extract <wrfrst> <dart_file> [--extra QCLOUD ...]
+Usage: .venv/bin/python scripts/da/wrfrst_dart.py extract <wrfrst|wrfinput> <dart_file> [--extra QCLOUD ...]
        .venv/bin/python scripts/da/wrfrst_dart.py insert  <dart_file> <wrfrst>
                                                  [--fields U V W PH THM MU QVAPOR] [--no-recompute]
                                                  [--hydrostatic-ph]
@@ -12,6 +12,8 @@ extract: writes <dart_file> (64-bit-offset netCDF, same dimensions and global at
   U V W PH THM MU from the current level (_2), QVAPOR, PSFC, T2, Q2, U10, V10 and Times as they are,
   T = THM (theta_m0: the boundary tools read T), and MUB, MAPFAC_U/V/M for update_wrf_bc. --extra
   adds more single-level fields (e.g. hydrometeors). filter updates this file in place.
+  <wrfrst> may also be a wrfinput file (plain names, one time level), e.g. the initial members
+  for filter tests (pilot step 11).
 
 insert: writes the --fields from <dart_file> back into <wrfrst> in place, into both time levels
   of two-level fields (WRF copies _2 to _1 at the start of the first step anyway; _1 is otherwise
@@ -52,9 +54,10 @@ def extract(rst_path, out_path, extra):
     with netCDF4.Dataset(rst_path) as rst:
         if rst.getncattr("USE_THETA_M") != 0:
             raise SystemExit(f"{rst_path}: USE_THETA_M != 0, T = THM does not hold")
-        names = {n: n + "_2" for n in TWO_LEVEL}
+        level = "_2" if "U_2" in rst.variables else ""   # wrfinput: one level, plain names
+        names = {n: n + level for n in TWO_LEVEL}
         names.update({n: n for n in SINGLE + list(extra) + ["Times"]})
-        names["T"] = "THM_2"
+        names["T"] = "THM" + level
         tmp = out_path + ".tmp"
         with netCDF4.Dataset(tmp, "w", format="NETCDF3_64BIT_OFFSET") as out:
             out.setncatts({a: rst.getncattr(a) for a in rst.ncattrs()})

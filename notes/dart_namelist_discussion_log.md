@@ -111,3 +111,54 @@ results in `notes/da_5member_pilot_steps.md`, step 10.
 - Related: `&obs_kind_nml` (which types `filter` assimilates; step 11), `outlier_threshold`
   (`&filter_nml`), `cutoff`/`special_localization_*` above.
 
+
+## Filter namelist for the 5-member pilot (`&filter_nml`, `&model_nml`, `&assim_tools_nml`, `&location_nml`) — 2026-10-02
+
+The pilot's `input.nml` for `filter` (step 11): `da_theta_m0/config/input.nml.filter`, one fixed file
+for every cycle. Decisions D1–D6 and the gate in `notes/da_5member_pilot_steps.md`, step 11.
+
+- **`wrf_state_variables`** (follows the 2026-10-01 entry above): U, V, THM, QVAPOR, PH, MU `UPDATE`;
+  W, T2, Q2, U10, V10, PSFC `NO_COPY_BACK`. W is in the state only to see its increments: in the
+  serial EAKF it changes no other variable's update, since no forward operator reads it and inflation
+  is per element. The tutorial updates W; drop it for the 50-member cycling if it isn't needed.
+  Quantity names from `wrf_state_variables_table` (Q2 is `QTY_VAPOR_MIXING_RATIO`, PSFC
+  `QTY_SURFACE_PRESSURE`). PH write-back: DART's own PH unless step 13 shows an imbalance
+  (`wrfrst_dart.py insert --hydrostatic-ph`).
+- **`cutoff` and `vert_normalization_scale_height`** (follows `cutoff` above): DART's distance
+  between an observation and a state element is sqrt(dh² + (dz / vert_normalization)²) radians, dz in
+  the `vert_localization_coord` units (4 = scale height, −ln(p/p_sfc) in WRF's `model_mod`); the
+  Gaspari-Cohn weight is 1 at 0 and 0 at 2 × `cutoff`. So the normalization is the number of scale
+  heights equivalent to 1 radian, the influence region is an ellipsoid, and a pure vertical separation
+  reaches 0 at 2 × `cutoff` × normalization. Changing `cutoff` (or a per-type
+  `special_localization_cutoffs`) scales the vertical width with it; `special_vert_normalization_*`
+  sets it per type. Provisional: 0.0235 and 10.6, HRRRDAS's 300 km and 0.5 scale height as
+  zero-influence distances (check the convention in Dowell et al. 2022).
+- **Inflation** (`inf_*`): flavor 2 prior, sd 0.6 fixed, no posterior, upper bound 5. `inf_damping`
+  is applied once per cycle (λ ← 1 + ρ(λ − 1)), so its time scale depends on the cycle length: the
+  tutorial's 0.9 is for 6-h cycles (e-folding ~57 h); every 15 min it is ~2.4 h. Kept at 0.9 for the
+  pilot, noted as inherited and untuned; revisit in the extension.
+- **`stages_to_write` / `output_members`**: input, preassim, postassim, output; `output_members`
+  applies to every listed stage (`filter_mod.f90:2426`), so members are written at all three
+  diagnostic stages. Needed for member analyses of the `NO_COPY_BACK` fields.
+- **`&obs_kind_nml`**: the 18 types in the step 9 files, all assimilated (ACARS humidity too, relying
+  on the outlier check); no evaluate-only types. **`&quality_control_nml`**: `outlier_threshold = 3`;
+  `input_qc_threshold = 3` passes all MADIS obs (QC = 1).
+- Related: `&fill_inflation_restart_nml` writes the first `input_priorinf_{mean,sd}.nc` from a
+  member file; `&ensemble_manager_nml :: tasks_per_node` must match the filter step's ranks per node.
+
+## Inflation sd and `postassim_priorinf` vs `output_priorinf` (`&filter_nml :: inf_*`) — 2026-10-02
+
+Checked in the source after the step 11 gate (`notes/da_5member_pilot_steps.md`, step 11 and Q13).
+
+- **Inflation sd with flavor 2 is fixed at 0.6.** `bayes_cov_inflate` (`adaptive_inflate_mod.f90`)
+  leaves the sd unchanged when it equals `inf_sd_lower_bound` (line 863). Above the bound it can only
+  shrink (898–899, "Prevent an increase in the sd of lambda"), and `update_inflation` floors it at
+  the bound (647–648). Damping (`filter_mod.f90:825–826`) acts on the mean only. `inf_sd_max_change` is
+  used only by flavor 5 (Gharamti 2017; lines 960–962), which lets the sd grow by up to that factor
+  per observation. Flavor 5 is a candidate for later (user).
+- **Next cycle's inflation: `postassim_priorinf_*`.** Nothing touches `PRIOR_INF_COPY` between the
+  postassim and output writes (`filter_mod.f90` 936–1108: only posterior inflation, posterior forward
+  operators, analysis write, `move_ahead`). The output stage is written with `force_copy = .false.`
+  (line 2645; `direct_netcdf_mod.f90:1576`), so it holds only `UPDATE` variables, while diagnostic
+  stages use `force_copy = .true.`. Inflation copies are never clamped. So `postassim_priorinf_*` =
+  `output_priorinf_*` plus the `NO_COPY_BACK` variables; gate test C showed them identical.

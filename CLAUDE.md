@@ -37,8 +37,9 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   (patched `pert_wrf_bc`), restart tests. Members cycle with **true WRF restarts**; DART works on a
   small file extracted from `wrfrst` (`scripts/da/wrfrst_dart.py`). Boundary refit test (step 8)
   passed 2026-10-02 (`scripts/da/refit_member_bdy.sh`). Steps 9-10 (MADIS conversion, all hours of 05-20/05-21,
-  `scripts/da/convert_madis_hour.sh` → `cases/20250520/obs/obs_seq_madis/`; per-cycle `obs_seq.out` for 00:15-01:00 by `scripts/da/make_cycle_obs.sh`) done 2026-10-02. Next: step 11
-  (`input.nml` for 5 members), cycle scripts.
+  `scripts/da/convert_madis_hour.sh` → `cases/20250520/obs/obs_seq_madis/`; per-cycle `obs_seq.out` for 00:15-01:00 by `scripts/da/make_cycle_obs.sh`) done 2026-10-02. Step 11
+  (filter `input.nml`, `cases/20250520/da_theta_m0/config/input.nml.filter`; gate `slurm.filter_gate` on the
+  00Z initial members) done 2026-10-02. Next: step 12, cycle scripts.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
   conversion, and the NCEP/prepbufr conventional-observation
   pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —

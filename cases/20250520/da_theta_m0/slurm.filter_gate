@@ -1,0 +1,118 @@
+#!/bin/bash
+# Filter gate for the pilot (step 11): filter with config/input.nml.filter on the 5 initial members
+# (05-20 00Z), without WRF. Everything happens in tests/filter_gate/; run/ is only read.
+#   members/  DART-facing files from run/memNNN/wrfinput_d01 (wrfrst_dart.py extract), kept as the
+#             untouched reference
+#   obs/      the 00:00 window (make_cycle_obs.sh 202505200000; holds the 00Z soundings). 05-19 23Z
+#             was not converted (step 9), so ACARS from 23:52:30-23:59:59 is missing; fine here.
+#   A_noobs/  an obs_seq.out with no observations: filter starts, reads the 5 members, ends cleanly
+#   B_eval/   the 00:00 obs with every type evaluate-only: forward operators for all three families,
+#             DART QC per type, prior spread vs innovations; member files must be unchanged
+#   C_assim/  the same obs assimilated: increments, NO_COPY_BACK fields unchanged in the member
+#             files, filter time and memory, and the PH balance check planned for step 13
+# Each test directory gets fresh copies of the members, the mean wrfinput (grid and variable
+# shapes), the sampling-error table and inflation files from fill_inflation_restart.
+#   sbatch slurm.filter_gate
+# One node, 128 MPI ranks (the rank count planned for step 13). New job type; single node, so no
+# UCX setting.
+#SBATCH --job-name=fgate520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=128
+#SBATCH --output=slurm.filter_gate.%j.out
+#SBATCH --exclusive
+
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
+PY=${PROJECT_DIR}/.venv/bin/python
+DART_WORK=${SOFTWARE_DIR}/DART/models/wrf/work
+SEC_TABLE=${SOFTWARE_DIR}/DART/assimilation_code/programs/gen_sampling_err_table/work/sampling_error_correction_table.nc
+GRID_FILE=${MEAN_DIR}/wrfinput_d01_2025-05-20_00_00_00
+G=${EXP_DIR}/tests/filter_gate
+NMEM=5
+NRANK=128
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+ulimit -s unlimited
+set -e
+
+rm -rf ${G}
+mkdir -p ${G}/members
+
+# --- inputs --------------------------------------------------------------------------------
+for m in $(seq -f %03g 1 ${NMEM}); do
+   mkdir -p ${G}/members/mem${m}
+   ${PY} ${PROJECT_DIR}/scripts/da/wrfrst_dart.py extract ${EXP_DIR}/run/mem${m}/wrfinput_d01 \
+      ${G}/members/mem${m}/dart_d01.nc &
+done
+wait
+date
+${PROJECT_DIR}/scripts/da/make_cycle_obs.sh 202505200000 ${G}/obs
+cat ${G}/obs/202505200000/counts.out
+
+setup_test() {   # <dir>: members, links, input.nml, file lists, inflation files
+   local d=${G}/$1
+   mkdir -p ${d}
+   cp -r ${G}/members/mem* ${d}/
+   sed "s/tasks_per_node = 16/tasks_per_node = ${NRANK}/" ${CONFIG_DIR}/input.nml.filter > ${d}/input.nml
+   ln -sf ${GRID_FILE} ${d}/wrfinput_d01
+   ln -sf ${SEC_TABLE} ${d}/sampling_error_correction_table.nc
+   : > ${d}/input_list_d01.txt
+   for m in $(seq -f %03g 1 ${NMEM}); do echo ${d}/mem${m}/dart_d01.nc >> ${d}/input_list_d01.txt; done
+   cp ${d}/input_list_d01.txt ${d}/output_list_d01.txt
+   ln -sf mem001/dart_d01.nc ${d}/dart_d01.nc   # template for fill_inflation_restart
+   (cd ${d} && srun -n 1 ${DART_WORK}/fill_inflation_restart > fill_inflation.log 2>&1)
+   rm ${d}/dart_d01.nc
+}
+
+run_filter() {   # <dir>
+   local d=${G}/$1
+   echo "=== filter in $1"
+   date
+   cd ${d}
+   SECONDS=0
+   srun -n ${NRANK} ${DART_WORK}/filter > filter.log 2>&1 || {
+      echo "filter failed in $1, see ${d}/filter.log"; tail -30 filter.log; exit 1; }
+   echo "filter in $1: ${SECONDS} s"
+}
+
+# --- A: no observations --------------------------------------------------------------------
+setup_test A_noobs
+cat > ${G}/A_noobs/obs_seq.out << EOF
+ obs_sequence
+obs_type_definitions
+           0
+  num_copies:            1  num_qc:            1
+  num_obs:            0  max_num_obs:            0
+observation
+QC
+  first:           -1  last:           -1
+EOF
+run_filter A_noobs
+
+# --- B: 00:00 obs, all evaluate-only -------------------------------------------------------
+setup_test B_eval
+sed -i -e "/evaluate_these_obs_types   = '',/d" \
+       -e "s/assimilate_these_obs_types =/evaluate_these_obs_types   =/" ${G}/B_eval/input.nml
+ln -sf ${G}/obs/202505200000/obs_seq.out ${G}/B_eval/obs_seq.out
+run_filter B_eval
+${PY} ${PROJECT_DIR}/scripts/da/check_filter_gate.py obs ${G}/B_eval/obs_seq.final
+${PY} ${PROJECT_DIR}/scripts/da/check_filter_gate.py states ${G}/members ${G}/B_eval
+
+# --- C: 00:00 obs assimilated --------------------------------------------------------------
+setup_test C_assim
+ln -sf ${G}/obs/202505200000/obs_seq.out ${G}/C_assim/obs_seq.out
+run_filter C_assim
+${PY} ${PROJECT_DIR}/scripts/da/check_filter_gate.py obs ${G}/C_assim/obs_seq.final
+${PY} ${PROJECT_DIR}/scripts/da/check_filter_gate.py states ${G}/members ${G}/C_assim
+${PY} ${PROJECT_DIR}/scripts/da/check_filter_gate.py stages ${G}/C_assim
+for m in 001 003; do
+   echo "=== hydrostatic check, member ${m}"
+   ${PY} ${PROJECT_DIR}/scripts/da/check_hydrostatic_balance.py ${GRID_FILE} \
+      ${G}/members/mem${m}/dart_d01.nc ${G}/C_assim/mem${m}/dart_d01.nc
+done
+date
+# Peak memory per step (fill_inflation_restart and filter steps).
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%24,Elapsed,NTasks,MaxRSS
