@@ -106,7 +106,10 @@ def write_state(mean_path, pert_path, out_path, hydrostatic_ph=True):
             if hydrostatic_ph:
                 grid = Grid(mean_path)
                 new = {"PH": np.asarray(out["PH"][0], np.float64), "MU": np.asarray(out["MU"][0], np.float64),
-                       "THM": thm[0], "QVAPOR": np.asarray(out["QVAPOR"][0], np.float64)}
+                       # THM rounded to float32 as in the member files, so make_initial_members.py
+                       # gives a bit-identical PH at the same hour
+                       "THM": thm[0].astype(np.float32).astype(np.float64),
+                       "QVAPOR": np.asarray(out["QVAPOR"][0], np.float64)}
                 dph = grid.ph_hydro(new) - grid.ph_hydro(read_state(mean_path))
                 out["PH"][0] = new["PH"] + dph
 
