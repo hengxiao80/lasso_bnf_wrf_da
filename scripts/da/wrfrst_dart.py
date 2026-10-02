@@ -3,6 +3,7 @@
 Usage: .venv/bin/python scripts/da/wrfrst_dart.py extract <wrfrst> <dart_file> [--extra QCLOUD ...]
        .venv/bin/python scripts/da/wrfrst_dart.py insert  <dart_file> <wrfrst>
                                                  [--fields U V W PH THM MU QVAPOR] [--no-recompute]
+                                                 [--hydrostatic-ph]
 
 A WRF restart file stores both Runge-Kutta time levels (U_1/U_2, THM_1/THM_2, MU_1/MU_2, ...), but
 DART's WRF model_mod and update_wrf_bc look fields up by their wrfinput names (U, THM, MU, ...).
@@ -21,6 +22,11 @@ insert: writes the --fields from <dart_file> back into <wrfrst> in place, into b
     P      from the equation of state (use_theta_m = 0), P_HYD = P + PB,
     T      = THM.
   P_HYD_W and T are also rediagnosed by WRF in phy_prep every step, and ALT in rk_step_prep.
+  --hydrostatic-ph (opt-in): PH = prior PH (the restart file's, before the insert) + the hydrostatic
+  PH increment from the new MU, THM and QVAPOR (check_hydrostatic_balance.py), replacing DART's PH
+  increment. This keeps the model's own non-hydrostatic part and removes the vertical acoustic
+  adjustment an unbalanced PH causes (fake-increment test, notes/da_5member_pilot_steps.md Sec. 4).
+  Whether to make it the default is decided from the first real filter update (step 13).
 See notes/da_5member_pilot_steps.md step 7.
 """
 
@@ -29,6 +35,8 @@ import os
 
 import netCDF4
 import numpy as np
+
+from check_hydrostatic_balance import G, Grid, read_state
 
 TWO_LEVEL = ["U", "V", "W", "PH", "THM", "MU"]
 SINGLE = ["QVAPOR", "PSFC", "T2", "Q2", "U10", "V10", "MUB", "MAPFAC_U", "MAPFAC_V", "MAPFAC_M"]
@@ -86,7 +94,9 @@ def recompute(rst):
     return {n: (rms(new - old[n]), np.abs(new - old[n]).max()) for n, new in (("AL", al), ("P", p))}
 
 
-def insert(dart_path, rst_path, fields, do_recompute):
+def insert(dart_path, rst_path, fields, do_recompute, hydrostatic_ph=False):
+    if hydrostatic_ph:
+        grid, prior = Grid(rst_path), read_state(rst_path)
     with netCDF4.Dataset(dart_path) as dart, netCDF4.Dataset(rst_path, "a") as rst:
         if dart["Times"][:].tobytes() != rst["Times"][:].tobytes():
             raise SystemExit(f"time mismatch: {dart_path} vs {rst_path}")
@@ -97,6 +107,16 @@ def insert(dart_path, rst_path, fields, do_recompute):
             targets = [name + "_1", name + "_2"] if name in TWO_LEVEL else [name]
             for t in targets:
                 rst[t][:] = field
+        if hydrostatic_ph:
+            new = read_state(dart_path)
+            dph = grid.ph_hydro(new) - grid.ph_hydro(prior)
+            rms = lambda a: np.sqrt((a ** 2).mean()) / G
+            print(f"   PH increment (m): DART RMS {rms(new['PH'] - prior['PH']):.3g},"
+                  f" hydrostatic RMS {rms(dph):.3g}, DART - hydrostatic RMS"
+                  f" {rms(new['PH'] - prior['PH'] - dph):.3g}; hydrostatic one used")
+            ph = (prior["PH"] + dph).astype(np.float32)
+            for t in ("PH_1", "PH_2"):
+                rst[t][0] = ph
         if do_recompute:
             for n, (rms, mx) in recompute(rst).items():
                 print(f"   {n}: recomputed - file value: RMS {rms:.3g}, max {mx:.3g}")
@@ -114,11 +134,12 @@ def main():
     i.add_argument("wrfrst")
     i.add_argument("--fields", nargs="+", default=["U", "V", "W", "PH", "THM", "MU", "QVAPOR"])
     i.add_argument("--no-recompute", action="store_true")
+    i.add_argument("--hydrostatic-ph", action="store_true")
     args = p.parse_args()
     if args.cmd == "extract":
         extract(args.wrfrst, args.dart_file, args.extra)
     else:
-        insert(args.dart_file, args.wrfrst, args.fields, not args.no_recompute)
+        insert(args.dart_file, args.wrfrst, args.fields, not args.no_recompute, args.hydrostatic_ph)
 
 
 if __name__ == "__main__":

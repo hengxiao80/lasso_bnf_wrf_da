@@ -1,13 +1,17 @@
 """Write the initial ensemble members (pilot step 5).
 
 Usage: .venv/bin/python scripts/da/make_initial_members.py <exp_dir> [--time 2025-05-20_00:00:00]
-                                                          [--nmem 5]
+                                                          [--nmem 5] [--no-hydrostatic-ph]
 
 For each member m, writes exp_dir/run/memNNN/wrfinput_d01 = mean wrfinput at --time
 (exp_dir/mean/wrfinput_d01_<time>) + exp_dir/perts/members/pert_memNNN.nc for U, V, THM, QVAPOR, MU
 (already scaled and centered by assign_perturbations.py). Then sets T = THM (theta_m0: the boundary
-tools read T; see notes/da_5member_pilot_steps.md step 2) and clips QVAPOR >= 0. All other fields are
-copied unchanged. Replaces the tutorial's add_bank_perts.ncl and the IC part of init_ensemble_var.sh.
+tools read T; see notes/da_5member_pilot_steps.md step 2) and clips QVAPOR >= 0. Unless
+--no-hydrostatic-ph, also adds the hydrostatic PH increment (check_hydrostatic_balance.py) from the
+perturbed MU, THM and QVAPOR: the bank carries no PH, and WRF keeps PH as read on a cold start
+(rebalance = 0), so an unperturbed PH gives a large vertical acoustic adjustment (notes Sec. 4,
+"Initial adjustment in the fake-increment test"). All other fields are copied unchanged. Replaces the
+tutorial's add_bank_perts.ncl and the IC part of init_ensemble_var.sh.
 
 Prints, per member, the number of clipped QVAPOR points, and then the ensemble spread by level
 compared with the spread of the perturbation files, and writes exp_dir/run/initial_members.txt.
@@ -20,12 +24,15 @@ import shutil
 import netCDF4
 import numpy as np
 
+from check_hydrostatic_balance import G, Grid, read_state
+
 FIELDS = ["U", "V", "THM", "QVAPOR", "MU"]
 
 
-def write_member(mean_path, pert_path, out_path):
+def write_member(mean_path, pert_path, out_path, hydrostatic_ph):
     tmp = out_path + ".tmp"
     shutil.copyfile(mean_path, tmp)
+    dph_rms = 0.0
     with netCDF4.Dataset(pert_path) as pert, netCDF4.Dataset(tmp, "a") as out:
         if out["Times"][:].tobytes() != pert["Times"][:].tobytes():
             raise SystemExit(f"time mismatch: {mean_path} vs {pert_path}")
@@ -41,8 +48,14 @@ def write_member(mean_path, pert_path, out_path):
             if name == "THM":
                 out["T"][:] = field.astype(np.float32)
         info = {"draw": int(pert.getncattr("bank_draw")), "centered": int(pert.getncattr("centered"))}
+    if hydrostatic_ph:
+        grid = Grid(mean_path)
+        dph = grid.ph_hydro(read_state(tmp)) - grid.ph_hydro(read_state(mean_path))
+        with netCDF4.Dataset(tmp, "a") as out:
+            out["PH"][0] = (np.asarray(out["PH"][0], np.float64) + dph).astype(np.float32)
+        dph_rms = float(np.sqrt((dph ** 2).mean()) / G)
     os.replace(tmp, out_path)
-    return nclip, info
+    return nclip, info, dph_rms
 
 
 def spread_by_level(paths, mean_path, pert_paths):
@@ -72,20 +85,22 @@ def main():
     p.add_argument("exp_dir")
     p.add_argument("--time", default="2025-05-20_00:00:00")
     p.add_argument("--nmem", type=int, default=5)
+    p.add_argument("--no-hydrostatic-ph", action="store_true")
     args = p.parse_args()
 
     mean_path = os.path.join(args.exp_dir, "mean", "wrfinput_d01_" + args.time.replace(":", "_"))
     pert_paths = [os.path.join(args.exp_dir, "perts", "members", f"pert_mem{m:03d}.nc")
                   for m in range(1, args.nmem + 1)]
     out_paths = []
-    lines = [f"# member bank_draw centered clipped_qvapor   (mean {mean_path})"]
+    lines = [f"# member bank_draw centered clipped_qvapor ph_incr_rms_m   (mean {mean_path})"]
     for m, pert_path in enumerate(pert_paths, start=1):
         mem_dir = os.path.join(args.exp_dir, "run", f"mem{m:03d}")
         os.makedirs(mem_dir, exist_ok=True)
         out_path = os.path.join(mem_dir, "wrfinput_d01")
-        nclip, info = write_member(mean_path, pert_path, out_path)
-        print(f"mem{m:03d}: draw {info['draw']}, {nclip} QVAPOR points clipped to 0 -> {out_path}")
-        lines.append(f"{m:3d} {info['draw']:3d} {info['centered']} {nclip}")
+        nclip, info, dph_rms = write_member(mean_path, pert_path, out_path, not args.no_hydrostatic_ph)
+        print(f"mem{m:03d}: draw {info['draw']}, {nclip} QVAPOR points clipped to 0,"
+              f" hydrostatic PH increment RMS {dph_rms:.2f} m -> {out_path}")
+        lines.append(f"{m:3d} {info['draw']:3d} {info['centered']} {nclip} {dph_rms:.2f}")
         out_paths.append(out_path)
     with open(os.path.join(args.exp_dir, "run", "initial_members.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")
