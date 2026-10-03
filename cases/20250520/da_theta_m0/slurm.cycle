@@ -4,7 +4,8 @@
 # the 5 members as concurrent srun --exact steps; filter on 8 nodes x 16 ranks; the per-member
 # Python and update_wrf_bc steps on one node each. Resumable: resubmit with the same arguments.
 #   sbatch slurm.cycle 202505200000 202505200100       (1-hour pilot: cold start + 4 analyses)
-#   RUN_NAME=_hph HYDROSTATIC_PH=1 sbatch slurm.cycle ...   (insert --hydrostatic-ph, in run_hph/, output_hph/)
+#   RUN_NAME=_hph sbatch slurm.cycle ...                    (run_hph/, output_hph/; hydrostatic PH is the
+#                                                            default since 2026-10-03, HYDROSTATIC_PH=0 for DART's)
 #SBATCH --job-name=cyc520
 #SBATCH -A cli120
 #SBATCH --partition=batch_all

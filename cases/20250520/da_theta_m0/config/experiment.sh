@@ -57,10 +57,11 @@ FILTER_NODES=8
 FILTER_TASKS_PER_NODE=16
 
 # 1: wrfrst_dart.py insert --hydrostatic-ph (PH from the analyzed MU, THM, QVAPOR instead of
-# DART's PH increment). Default 0 = DART's PH. Step 13 recommends 1 (removes most of the
-# post-analysis shock, changes nothing else); the default is not switched yet.
+# DART's PH increment); 0 = DART's PH. Default 1 since 2026-10-03 (user, after step 13: it removes
+# most of the post-analysis shock and changes nothing else). The first pilot (output/, DART's PH)
+# can only be resumed with HYDROSTATIC_PH=0, which settings.txt enforces.
 # driver.sh records it in output${RUN_NAME}/settings.txt and refuses to resume a run with another value.
-HYDROSTATIC_PH=${HYDROSTATIC_PH:-0}
+HYDROSTATIC_PH=${HYDROSTATIC_PH:-1}
 
 # Prior inflation damping per cycle (&filter_nml inf_damping, first column); prep_filter.sh writes it
 # into the cycle's input.nml. 0.9 = config/input.nml.filter (tutorial value, e-folding ~2.4 h at
