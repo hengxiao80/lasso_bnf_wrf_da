@@ -7,6 +7,8 @@
 # Environment (optional): RESTART=.true. starts from a WRF restart file: <wrfinput> is then a
 # wrfrst file, linked as wrfrst_d01_<start>; default .false. (cold start from wrfinput_d01).
 # RESTART_INTERVAL (minutes) for restart output; default 7200 (none within a segment).
+# SRUN_OPTS: extra srun options, e.g. "-N 8 -c 8 --exact" to run beside other members' steps
+# in one allocation (cycling, pilot step 12); default none (the step uses the whole allocation).
 #
 # Links the WRF run-time tables and wrf.exe into run_dir, links <wrfinput> as wrfinput_d01 and
 # <wrfbdy> as wrfbdy_d01 (WRF only reads them), writes namelist.input from
@@ -49,7 +51,7 @@ fi
 
 echo "$(date) wrf.exe ${start} -> ${end} in ${run_dir} ($((npx * npy)) ranks, restart=${restart})"
 t0=$(date +%s)
-srun -n $((npx * npy)) --cpu_bind=cores ./wrf.exe || true
+srun ${SRUN_OPTS:-} -n $((npx * npy)) --cpu_bind=cores ./wrf.exe || true
 echo "$(date) wrf.exe finished, $(( $(date +%s) - t0 )) s"
 if ! tail -n 5 rsl.out.0000 | grep -q 'SUCCESS COMPLETE WRF'; then
    echo "run_wrf_segment.sh: wrf.exe did not complete in ${run_dir}" >&2; exit 1

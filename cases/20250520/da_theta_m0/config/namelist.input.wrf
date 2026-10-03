@@ -17,6 +17,7 @@
  frames_per_outfile                  = 1,
  restart                             = @RESTART@,
  restart_interval                    = @RSTINT@,
+ override_restart_timers             = .true.,
  io_form_history                     = 2
  io_form_restart                     = 2
  io_form_input                       = 2

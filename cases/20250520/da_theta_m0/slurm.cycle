@@ -1,0 +1,38 @@
+#!/bin/bash
+# Cycling job (pilot steps 12-13): one 40-node allocation running driver.sh over the cycles
+# <first> to <last> (YYYYMMDDHHMM). Q7: each member's wrf.exe on 8 nodes (16 x 8 ranks x 8 threads),
+# the 5 members as concurrent srun --exact steps; filter on 8 nodes x 16 ranks; the per-member
+# Python and update_wrf_bc steps on one node each. Resumable: resubmit with the same arguments.
+#   sbatch slurm.cycle 202505200000 202505200100       (1-hour pilot: cold start + 4 analyses)
+#   RUN_NAME=_hph HYDROSTATIC_PH=1 sbatch slurm.cycle ...   (insert --hydrostatic-ph, in run_hph/, output_hph/)
+#SBATCH --job-name=cyc520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=02:00:00
+#SBATCH --nodes=40
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.cycle.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0/config/experiment.sh
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+
+# wrf.exe UCX settings, as in the existing slurm.wrf scripts; don't mix with real.exe's. filter's
+# multi-node steps run with the same settings (the step 11 gate ran filter on one node).
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+${PROJECT_DIR}/scripts/da/driver.sh ${EXP_SH} "$1" "$2"
+status=$?
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%24,Elapsed,NNodes,NTasks,MaxRSS,State
+exit ${status}

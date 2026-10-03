@@ -3,7 +3,7 @@
 Usage: .venv/bin/python scripts/da/wrfrst_dart.py extract <wrfrst|wrfinput> <dart_file> [--extra QCLOUD ...]
        .venv/bin/python scripts/da/wrfrst_dart.py insert  <dart_file> <wrfrst>
                                                  [--fields U V W PH THM MU QVAPOR] [--no-recompute]
-                                                 [--hydrostatic-ph]
+                                                 [--hydrostatic-ph [--prior <dart_file>]]
 
 A WRF restart file stores both Runge-Kutta time levels (U_1/U_2, THM_1/THM_2, MU_1/MU_2, ...), but
 DART's WRF model_mod and update_wrf_bc look fields up by their wrfinput names (U, THM, MU, ...).
@@ -29,6 +29,9 @@ insert: writes the --fields from <dart_file> back into <wrfrst> in place, into b
   increment. This keeps the model's own non-hydrostatic part and removes the vertical acoustic
   adjustment an unbalanced PH causes (fake-increment test, notes/da_5member_pilot_steps.md Sec. 4).
   Whether to make it the default is decided from the first real filter update (step 13).
+  --prior takes the prior state from a file saved before the insert (e.g. the prior DART-facing
+  file) instead of the restart file, so that rerunning an interrupted insert gives the same result
+  (cycling, pilot step 12).
 See notes/da_5member_pilot_steps.md step 7.
 """
 
@@ -97,9 +100,9 @@ def recompute(rst):
     return {n: (rms(new - old[n]), np.abs(new - old[n]).max()) for n, new in (("AL", al), ("P", p))}
 
 
-def insert(dart_path, rst_path, fields, do_recompute, hydrostatic_ph=False):
+def insert(dart_path, rst_path, fields, do_recompute, hydrostatic_ph=False, prior_path=None):
     if hydrostatic_ph:
-        grid, prior = Grid(rst_path), read_state(rst_path)
+        grid, prior = Grid(rst_path), read_state(prior_path or rst_path)
     with netCDF4.Dataset(dart_path) as dart, netCDF4.Dataset(rst_path, "a") as rst:
         if dart["Times"][:].tobytes() != rst["Times"][:].tobytes():
             raise SystemExit(f"time mismatch: {dart_path} vs {rst_path}")
@@ -138,11 +141,13 @@ def main():
     i.add_argument("--fields", nargs="+", default=["U", "V", "W", "PH", "THM", "MU", "QVAPOR"])
     i.add_argument("--no-recompute", action="store_true")
     i.add_argument("--hydrostatic-ph", action="store_true")
+    i.add_argument("--prior", help="prior state for --hydrostatic-ph (default: the restart file)")
     args = p.parse_args()
     if args.cmd == "extract":
         extract(args.wrfrst, args.dart_file, args.extra)
     else:
-        insert(args.dart_file, args.wrfrst, args.fields, not args.no_recompute, args.hydrostatic_ph)
+        insert(args.dart_file, args.wrfrst, args.fields, not args.no_recompute, args.hydrostatic_ph,
+               args.prior)
 
 
 if __name__ == "__main__":

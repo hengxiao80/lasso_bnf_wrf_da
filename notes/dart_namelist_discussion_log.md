@@ -162,3 +162,23 @@ Checked in the source after the step 11 gate (`notes/da_5member_pilot_steps.md`,
   (line 2645; `direct_netcdf_mod.f90:1576`), so it holds only `UPDATE` variables, while diagnostic
   stages use `force_copy = .true.`. Inflation copies are never clamped. So `postassim_priorinf_*` =
   `output_priorinf_*` plus the `NO_COPY_BACK` variables; gate test C showed them identical.
+
+## `inf_damping` and `inf_flavor = 5` in the 1-hour pilot (`&filter_nml :: inf_*`) — 2026-10-03
+
+Quick tests in pilot step 13 (`notes/da_5member_pilot_steps.md`, step 13 and Q13), each a 1-hour run
+with hydrostatic PH compared with the same run at `inf_damping = 0.9`, flavor 2. Both are now per-run
+settings (`INF_DAMPING`, `INF_FLAVOR` in `config/experiment.sh`, written into each cycle's
+`input.nml` by `prep_filter.sh`); `config/input.nml.filter` itself is unchanged. A fuller inflation
+test is postponed (user).
+
+- **`inf_damping = 0.9956`** (the tutorial's ~57-h e-folding at 15-min cycles, see the 2026-10-02
+  filter entry): inflation keeps more of each gain, and the gap to 0.9 grows every cycle (01:00:
+  U domain mean 1.035 vs 1.029). Spread and observation statistics hardly change within an hour;
+  the choice needs the extension.
+- **`inf_flavor = 5` needs `inf_sd_lower_bound < inf_sd_initial` for its sd to evolve.** Correction
+  to the previous entry: flavor 5 lets the sd grow by up to `inf_sd_max_change` per observation, but
+  `bayes_cov_inflate` (`adaptive_inflate_mod.f90`, `GHA2017` branch) returns early with the sd
+  unchanged when it equals `inf_sd_lower_bound`, exactly like flavor 2. With our 0.6 / 0.6 the sd
+  stayed 0.600 everywhere, so the run tested only flavor 5's inverse-gamma update of the mean,
+  which gave about half the inflation of flavor 2 (01:00: U mean 1.015, max 2.21 vs 1.029, 2.64)
+  and 1–3 % less spread. A floor below 0.6 is still to be chosen (not yet a per-run setting).
