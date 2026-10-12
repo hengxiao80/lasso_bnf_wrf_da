@@ -182,3 +182,20 @@ test is postponed (user).
   stayed 0.600 everywhere, so the run tested only flavor 5's inverse-gamma update of the mean,
   which gave about half the inflation of flavor 2 (01:00: U mean 1.015, max 2.21 vs 1.029, 2.64)
   and 1–3 % less spread. A floor below 0.6 is still to be chosen (not yet a per-run setting).
+
+## METAR observation errors (converter, not `input.nml`) — 2026-10-03
+
+Not a namelist setting: the MADIS converters set each observation's error from compiled functions
+(`obs_error/ncep_obs_err_mod.f90`), and `filter` takes the error variance from `obs_seq.out`.
+Recorded here because it changes what `filter` assimilates.
+
+- **Changed (user, 2026-10-03), local patch `patches/dart_7bbd35a09_madis_metar_obs_errors.patch`:**
+  METAR T2 2.5 → 1.26 K (NAM), 10-m wind 3.5 → 1.59 m/s (RAP), RH 0.2 → 0.059 (RAP; q error =
+  0.059 × q_sat), altimeter 1.0 hPa unchanged. Takes effect from the extension's first cycle (01:15);
+  the 1-hour pilot (00:15–01:00) used the old errors.
+- **Why:** pilot innovation statistics (consistency ratio 0.11–0.26, implied and Desroziers errors
+  2–3× below the assigned ones, close to NCEP's tables). See `notes/obs_expansion.md` Sec. 5.
+- **Not changed:** radiosonde, ACARS (statistics suggest ACARS T and q could be somewhat tighter; wind
+  is consistent), mesonet (`land_*`, DART defaults; to tune when mesonet is added).
+- `wrf_dart_obs_preprocess`'s boundary inflation (`maxobsfac = 2.5`) still multiplies these errors near
+  the boundary.

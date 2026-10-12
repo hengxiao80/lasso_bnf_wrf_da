@@ -166,3 +166,38 @@ pinned upstream commit, why it was needed, and how it was applied.
   Clean builds (no `error #`); all 28 + 10 executables rebuilt, `filter` still linked with `mpif90`. Check: the
   `pert_wrf_bc` zero-perturbation refit (`build_member_bdy.py --zero-pert`) is now bit-identical to the `real.exe`
   boundary records in all 187 variables (before: up to 3 ulp in U/V values, 7 ulp in tendencies).
+
+## dart_7bbd35a09_madis_metar_obs_errors.patch
+
+**This changes the observation errors of all METAR observations (`METAR_*`), away from DART's defaults.**
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), files
+  `observations/obs_converters/MADIS/convert_madis_metar.f90` and
+  `observations/obs_converters/obs_error/ncep_obs_err_mod.f90`. Rebuild with
+  `observations/obs_converters/MADIS/work/quickbuild.sh convert_madis_metar`.
+- **Why:** the pilot's innovation statistics (`scripts/da/innovation_stats.py`, 4 analyses
+  00:15–01:00 05-20) put the METAR q2, T2 and 10-m wind errors 2–3× below DART's defaults, close to
+  NCEP's regional error tables. Decided by the user 2026-10-03, before the pilot extension. Details:
+  `notes/obs_expansion.md` Sec. 5.
+- **Fix:**
+  1. `convert_madis_metar` calls the `metar_*_error` functions instead of `land_*_error`. Stock, METAR
+     and mesonet both use `land_*`; mesonet (`convert_madis_mesonet`) still does, so its errors stay
+     DART's defaults until they are tuned separately.
+  2. New values of the `metar_*` functions (NCEP tables from NOAA-EMC/GSI-fix `0ba656b6`, in
+     `../software/GSI-fix_subset/`):
+
+     | Function | Stock | Now | Source |
+     |---|---|---|---|
+     | `metar_temp_error` | 2.5 K | **1.26 K** | NAM `nam_errtable.r3dv`, type 187 (user's choice over RAP's 2.26 K) |
+     | `metar_wind_error` | 3.5 m/s | **1.59 m/s** | RAP `rap_nam_errtable.r3dv`, type 287 |
+     | `metar_rel_hum_error` | 0.2 | **0.059** (RH fraction; q error = 0.059 × q_sat) | RAP, type 187 |
+     | `metar_pres_error` | 1.0 hPa | 1.0 hPa (unchanged) | = RAP's effective value (0.54 clipped to `ermin` 1.0) |
+
+- **Side effect:** `metar_*` is otherwise used only by `obs_converters/ok_mesonet/convert_ok_mesonet.f90`
+  (Oklahoma Mesonet), which we don't build.
+- **Applied:** 3 October 2026. Clean rebuild (log `MADIS/work/quickbuild_metar_errors.log`); the previous
+  executable is kept as `MADIS/work/convert_madis_metar.pre_metar_errors`. All 48 hourly METAR files of 05-20
+  and 05-21 reconverted (`obs_seq_madis/convert_metar_errors_20261003.log`). Check: same observations and
+  values, only the error variances differ. The old files (used by the 1-hour pilot) are kept in
+  `cases/20250520/obs/obs_seq_madis/metar_v1_dart_land_errors/`. The pilot's per-cycle files
+  (`da_theta_m0/obs/202505200015`–`202505200100`) were built from those and are left as they are.

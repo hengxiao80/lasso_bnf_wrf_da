@@ -1,0 +1,91 @@
+diff --git a/observations/obs_converters/MADIS/convert_madis_metar.f90 b/observations/obs_converters/MADIS/convert_madis_metar.f90
+index 2b71558a9..051989e10 100644
+--- a/observations/obs_converters/MADIS/convert_madis_metar.f90
++++ b/observations/obs_converters/MADIS/convert_madis_metar.f90
+@@ -43,8 +43,8 @@ use  obs_sequence_mod, only : obs_sequence_type, obs_type, read_obs_seq, &
+ use        meteor_mod, only : sat_vapor_pressure, specific_humidity, & 
+                               wind_dirspd_to_uv, invert_altimeter, pres_alt_to_pres, &
+                               temp_and_dewpoint_to_rh
+-use       obs_err_mod, only : land_temp_error, land_wind_error, &
+-                              land_pres_error, land_rel_hum_error
++use       obs_err_mod, only : metar_temp_error, metar_wind_error, &
++                              metar_pres_error, metar_rel_hum_error
+ use dewpoint_obs_err_mod, only : dewpt_error_from_rh_and_temp, &
+                                  rh_error_from_dewpt_and_temp
+ use      obs_kind_mod, only : METAR_U_10_METER_WIND, METAR_V_10_METER_WIND, &
+@@ -223,7 +223,7 @@ obsloop2: do i = 1, nused
+   if ( alti(n) /= alti_miss .and. qc_alti(n) == 0 ) then
+ 
+     pres = invert_altimeter(alti(n) * 0.01_r8, elev(n))
+-    oerr = land_pres_error(palt)
++    oerr = metar_pres_error(palt)
+     if ( alti(n) >=  89000.0_r8 .and. &
+          alti(n) <= 110000.0_r8 .and. oerr /= missing_r8 ) then
+ 
+@@ -240,7 +240,7 @@ obsloop2: do i = 1, nused
+        wspd(n) /= wspd_miss .and. qc_wspd(n) == 0  ) then
+ 
+     call wind_dirspd_to_uv(wdir(n), wspd(n), uwnd, vwnd)
+-    oerr = land_wind_error(palt)
++    oerr = metar_wind_error(palt)
+     if ( abs(uwnd) < 150.0_r8 .and. abs(vwnd) < 150.0_r8 .and. oerr /= missing_r8 ) then
+ 
+       call create_3d_obs(lat(n), lon(n), elev(n), VERTISSURFACE, uwnd, &
+@@ -258,7 +258,7 @@ obsloop2: do i = 1, nused
+   ! add air temperature data to obs_seq
+   if ( tair(n) /= tair_miss .and. qc_tair(n) == 0 ) then 
+ 
+-    oerr = land_temp_error(palt)
++    oerr = metar_temp_error(palt)
+     if ( tair(n) >= 200.0_r8 .and. tair(n) <= 335.0_r8 .and. oerr /= missing_r8 ) then
+ 
+       call create_3d_obs(lat(n), lon(n), elev(n), VERTISSURFACE, tair(n), &
+@@ -292,7 +292,7 @@ obsloop2: do i = 1, nused
+       if ( LH_err ) then
+         qerr = rh_error_from_dewpt_and_temp(tair(n), tdew(n))
+       else
+-        qerr = land_rel_hum_error(pres, tair(n), qobs / qsat)
++        qerr = metar_rel_hum_error(pres, tair(n), qobs / qsat)
+       endif
+       oerr = max(qerr * qsat, 0.0001_r8)
+   
+@@ -314,7 +314,7 @@ obsloop2: do i = 1, nused
+       if ( LH_err ) then
+         oerr = rh_error_from_dewpt_and_temp(tair(n), tdew(n))
+       else
+-        oerr = land_rel_hum_error(pres, tair(n), rh)    
++        oerr = metar_rel_hum_error(pres, tair(n), rh)    
+       endif
+   
+       if ( rh >  0.0_r8 .and. &
+diff --git a/observations/obs_converters/obs_error/ncep_obs_err_mod.f90 b/observations/obs_converters/obs_error/ncep_obs_err_mod.f90
+index 4c008eba8..c77e90480 100644
+--- a/observations/obs_converters/obs_error/ncep_obs_err_mod.f90
++++ b/observations/obs_converters/obs_error/ncep_obs_err_mod.f90
+@@ -168,7 +168,7 @@ real(r8), intent(in) :: pres, tmpk, rh
+ 
+ real(r8) :: metar_rel_hum_error
+ 
+-metar_rel_hum_error = 0.2_r8
++metar_rel_hum_error = 0.059_r8   ! local patch: RAP nam_errtable type 187 (was 0.2)
+ 
+ return
+ end function metar_rel_hum_error
+@@ -192,7 +192,7 @@ real(r8), intent(in) :: pres  !  (mb)
+ 
+ real(r8) :: metar_temp_error
+ 
+-metar_temp_error = 2.5_r8
++metar_temp_error = 1.26_r8   ! local patch: NAM nam_errtable type 187 (was 2.5)
+ 
+ return
+ end function metar_temp_error
+@@ -216,7 +216,7 @@ real(r8), intent(in) :: pres  !  (mb)
+ 
+ real(r8) :: metar_wind_error
+ 
+-metar_wind_error = 3.5_r8
++metar_wind_error = 1.59_r8   ! local patch: RAP nam_errtable type 287 (was 3.5)
+ 
+ return
+ end function metar_wind_error
