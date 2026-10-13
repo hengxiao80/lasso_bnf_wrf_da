@@ -195,8 +195,47 @@ The columns convert the ratio to the base error unit (ratio × the unboosted DAR
 ### 7.2 Proposed design (for decision)
 
 1. **Per-cycle selection before the converter.** A Python step builds, for each analysis time t, a reduced `mesonet_input.nc` from the hourly files around t: records in (t − 450 s, t + 450 s] (the `filter` window, as for the other families), the **one record per station closest to t** (ties: the earlier one), **stations with a METAR ID in the same hour dropped**, then the stock converter and the box trim. Within the chosen record, a variable that fails QC is dropped, not taken from another record. Reason: 5-min stations would otherwise enter 2–3 times per cycle with correlated errors; the stock converter can't select, and DART has no surface thinning. The output is a per-cycle `obs_seq.land_sfc`, which `make_cycle_obs.sh` uses directly instead of slicing hourly files.
-2. **Variables in the first round: T and q assimilated; wind and altimeter evaluated only** (`evaluate_these_obs_types`), so `obs_seq.final` gives their innovation statistics without letting them act. Reasons: mesonet wind siting (rooftops, sheltered sensors in APRSWXNET) is the known weak point: deterministic HRRR loads a mesonet station use-list (§1; HRRRDAS's copy is commented out; contents not public); altimeter fails MADIS QC 23 % of the time. Decide wind and altimeter from their statistics.
-3. **Providers:** all, for T and q (HADS adds little either way). Per-provider statistics need the provider in the output; `obs_seq` can't carry it, so either separate per-provider runs of `innovation_stats.py` over separate obs files or a side table keyed by location. Proposed: keep a per-cycle CSV (station, provider, lat, lon, time, values) next to the obs file, and match by location when analysing.
-4. **Errors: RAP effective values** (§5): T 3.0 K, q 7 % RH, wind 3.0 m/s, altimeter 1.0 hPa (unchanged), through a local patch of the `land_*` functions, as for METAR. Alternative: keep DART's defaults (2.5 K, RH 0.2, 3.5 m/s) for a first look. RAP's mesonet T error is looser than its METAR error (3.0 vs 2.26 K) and its q error about the same (7 vs 5.9 % RH).
+2. **Station and provider selection, revised after §7.3 (2026-10-13): GSI's GSD logic with the public lists.** Per variable, a report is used if its provider is on a provider list, or its station is on that variable's station list. Proposed lists: providers = RRFS v2's public 20-provider wind list (= GSI-fix `nam_mesonet_uselist.txt` minus FL-Meso/FAWN), as a stand-in for HRRR's non-public `gsd_sfcobs_provider.txt`; stations = RRFS v2's `current_mesonet_uselist.yaml` (GSL's daily list, a 2026 snapshot) for T and Td/q, and RRFS v2's 42 per-provider station blocks for wind. Calm winds (u = v = 0) dropped (`i_gsdqc = 2`). Altimeter from listed providers only (GSD logic has no station path for pressure). Stations in the box with a usable (QCR = 0; wind also non-calm) report in the hour → kept, 18Z: T 2,953 → 2,544; Td/q 2,553 → 1,177; wind 2,572 → 950; altimeter 1,715 → 296. 06Z within a few percent of these (wind 1,992 usable, as calm reports rise at night). APRSWXNET is ~55–60 % of the usable stations of every variable; the station lists keep most of its T and few of its Td and wind. Per-cycle counts come from the selection script.
+3. **Variables in the first round: T, q and wind assimilated; altimeter evaluated only** (`evaluate_these_obs_types`). Wind is assimilated because the lists and calm rejection now do what HRRR/RRFS do for siting; altimeter fails MADIS QC 23 % of the time and its provider list is a guess. Alternative (the earlier proposal): wind evaluated only too, for a first look at its statistics. Per-provider statistics need the provider in the output; `obs_seq` can't carry it, so keep a per-cycle CSV (station, provider, lat, lon, time, values) next to the obs file and match by location when analysing.
+4. **Errors: RAP effective values** (§5), which are also RRFS v1's (same errtable and convinfo bounds, §7.3): T 3.0 K, q 7 % RH, wind 3.0 m/s, altimeter 1.0 hPa (unchanged), through a local patch of the `land_*` functions, as for METAR. Alternative: keep DART's defaults (2.5 K, RH 0.2, 3.5 m/s) for a first look. RAP's mesonet T error is looser than its METAR error (3.0 vs 2.26 K) and its q error about the same (7 vs 5.9 % RH). RRFS v2 (JEDI) assigns T 4.0 K without the 3.0 K clip, then inflates it further.
 5. **No spatial thinning at first; localization as for METAR** (one conventional cutoff, as HRRRDAS's single 300-km pass). Risk to watch: ~2,450 extra surface obs per cycle with 5 members may collapse low-level spread; check prior spread and the T/q consistency ratios. Fallbacks: superobbing on a ~10–20 km grid or a larger error.
 6. **Data.** All 72 hourly files of 05-19..05-21 are on disk (`obs/madis/mesonet/`, 2.1 GB, downloaded 2026-09-25 with the other MADIS families; `wrf_dart_tutorial_adaptation.md` 2.13). To add to `DATA_SOURCES.md` with the other MADIS families.
+
+### 7.3 How HRRR, HRRRDAS and RRFS select mesonet observations (checked 2026-10-13)
+
+Sources: `../software/GSI` (NOAA-EMC/GSI `124138df0`, 2026-09-01; `src/gsi/read_prepbufr.F90`, `sfcobsqc.f90`), `../software/rrfs-workflow` (NOAA-EMC/rrfs-workflow `d228600e`, 2026-10-07, default branch `release/v1.0` = RRFS v1, FV3 + GSI; branch `rrfs-mpas-jedi` at `9c295a2d`, 2026-08-25 = RRFS v2, MPAS + JEDI), `../software/HRRR`, and GSI-fix `0ba656b6` (single files fetched; the lists below are not in our `GSI-fix_subset/`).
+
+**GSI has three mesonet selection modes** (`read_prepbufr.F90` ~2067; types 188/195/288/295 only):
+- `i_gsdsfc_uselist = 1` (GSD; `apply_gsd_sfcuselist`): a report is used if its provider/subprovider is in `gsd_sfcobs_provider.txt` (all variables); otherwise only if its station is in `gsd_sfcobs_uselist.txt` with flag 1 for that variable (separate W, T, Td columns); otherwise rejected (usage 6000). Pressure has no station path: from unlisted providers it is always rejected. With no use-list file, only listed providers pass.
+- `i_gsdsfc_uselist = 2`: RTMA-style `sfcobs_uselist.txt`.
+- otherwise (NAM, RTMA; `get_usagerj`): T, q, ps go only through reject lists; mesonet **wind** is rejected unless its provider is in `mesonetuselist`, its station in `mesonet_stnuselist`, or it passes `wbinuselist`.
+- Also: `i_gsdqc = 2` rejects mesonet winds with u = v = 0 (usage 115) and implausible 2-m dewpoints (Td < min(−40 °C, T − 10), T − Td > 70, Td > 32.2 °C); mesonet ps is never used when the 8th character of the station ID is "x".
+
+**What each system uses.**
+
+| System | Mode | Provider list | Station use-list | Notes |
+|---|---|---|---|---|
+| Deterministic HRRR (`parm/conus/hrrr_gsiparm.anl.sh`) | 1, `i_gsdqc = 2` | `hrrr_gsd_sfcobs_provider.txt` | `gsd_sfcobs_uselist.txt` | lists not public |
+| **HRRRDAS** (`hrrrdas_gsiparm.anl[.mean]`) | 1, `i_gsdqc = 2` | `hrrr_gsd_sfcobs_provider.txt` | **none** (`exhrrr_analysis.sh:249` commented out) | so mesonet T, q, wind, ps **only from listed providers**; contents not public; convinfo `hrrrdas_regional_convinfo.15km.txt` not public either |
+| RRFS v1 (`ush/gsiparm.anl.sh`, `scripts/exrrfs_analysis_gsi.sh:796–825`) | 1, `i_gsdqc = 2` | `gsd_sfcobs_provider.txt` from `FIX_GSI` | **daily** `YYYY-MM-DD_meso_uselist.txt` of the previous day (or `current_mesonet_uselist.txt`) from GSL verification (`/lfs4/BMC/amb-verif/rap_ops_mesonet_uselists`; ops: `FIX_RRFS/gsi`) | convinfo/errtable as in §5 (188/288 `iuse = 1`, ±0.1 h, no thinning, errors 3.0 K / 7 % / 3.0 m/s / 1.0 hPa after clipping); lists not in the public repos |
+| RRFS v2 (`parm/observers/msonet_*.yaml`) | JEDI filters | **wind only**: reject all, accept 20 providers (GSI-fix `nam_mesonet_uselist.txt` minus FL-Meso/FAWN: RAWS, MesoWest, HADS, KSDOT, MOComAgNet, OK-Meso, WT-Meso, state DOTs, NOS, …; no APRSWXNET, no NonFedAWOS) + 42 per-provider station blocks (4,214 stations: AWS 1,378, RAWS 826, APRSWXNET 659, MesoWest 454, UrbaNet 356, …) | `fix/jedi/current_mesonet_uselist.yaml` (from GSL's `current_mesonet_uselist.txt`: T 31,642, Td 12,756, W 1,493 stations) and a converter (`workflow/tools/convert_mesonet_uselist_to_yaml.py`), but **not referenced by any observer yet** | T, q, ps: all providers, prepbufr quality marker 4–15 rejected, T error 4.0 K assigned without the 3.0 K clip, then GSI-style inflation (pressure check, QM 3 ×1.2); 200-km localization lengthscale |
+
+GSI-fix also has the NAM/RTMA lists: `nam_mesonet_uselist.txt` (21 providers: RRFS v2's 20 plus FL-Meso/FAWN), `nam_mesonet_stnuselist.txt` = `rtma_ruc2_wind-uselist-noMETAR.dat` (4,414 stations with 2007 wind statistics), `rtma_mesonet_uselist.txt` (17 providers, includes NonFedAWOS), `rtma_{t,q,w,p}_rejectlist`.
+
+**Coverage in our domain** (05-20 18Z; `jedi/`-list match by MADIS `stationId`, which uses the same IDs as prepbufr: 1,274 of 1,700 APRSWXNET IDs are on the T list):
+
+| Provider | stations | on T list | on Td list | on W list | wind kept by RRFS v2 filter |
+|---|---|---|---|---|---|
+| APRSWXNET | 1,700 | 1,274 | 275 | 0 | 18 |
+| HADS | 1,282 | 41 | 28 | 3 | 1,282 |
+| MesoWest | 1,006 | 475 | 252 | 7 | 1,006 |
+| RAWS | 241 | 192 | 186 | 10 | 241 |
+| NonFedAWOS | 127 | 96 | 68 | 23 | 2 |
+| others | 81 | 60 | 43 | 1 | 58 |
+| all | 4,437 | 2,138 | 852 | 44 | 2,607 |
+
+GSL's current station list keeps few mesonet winds anywhere (44 stations in our domain); whole providers carry the wind in RRFS v2.
+
+**Calm winds pass MADIS QC and are common**: of the QCR = 0 wind reports in the box, 2,342 of 17,742 are calm at 18Z (APRSWXNET 2,185 of 13,373) and 7,589 of 17,932 at 06Z, 01 CDT (APRSWXNET 6,561 of 13,418, 49 %; MesoWest 725 of 3,146). GSI (`i_gsdqc = 2`) rejects them all.
+
+**Reading.** HRRR-family systems never take mesonet wholesale: HRRRDAS takes whole providers only (list unknown), deterministic HRRR and RRFS v1 add GSL's daily station lists, RRFS v2 restricts winds only. The public 20-provider list is the closest stand-in for HRRR's provider list. The GSL station list is a 2026 snapshot, not the 2025-05 one; station quality drifts, so treat it as approximate.

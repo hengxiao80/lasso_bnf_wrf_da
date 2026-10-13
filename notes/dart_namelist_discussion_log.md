@@ -205,10 +205,12 @@ Recorded here because it changes what `filter` assimilates.
 Profile and full proposal: `notes/obs_expansion.md` Sec. 7. Nothing in `config/input.nml.filter` is
 changed yet.
 
-- **Proposed obs types:** `LAND_SFC_TEMPERATURE` and `LAND_SFC_SPECIFIC_HUMIDITY` in
-  `assimilate_these_obs_types`; `LAND_SFC_U_WIND_COMPONENT`, `LAND_SFC_V_WIND_COMPONENT` and
-  `LAND_SFC_ALTIMETER` in `evaluate_these_obs_types` (prior/posterior H(x) in `obs_seq.final`, no
-  update) until their innovation statistics are looked at. All are compiled into our `filter` (Sec. 2).
+- **Proposed obs types (revised the same day after checking HRRR/RRFS, Sec. 7.3):**
+  `LAND_SFC_TEMPERATURE`, `LAND_SFC_SPECIFIC_HUMIDITY`, `LAND_SFC_U_WIND_COMPONENT` and
+  `LAND_SFC_V_WIND_COMPONENT` in `assimilate_these_obs_types`, after GSD-style provider/station
+  selection and calm-wind rejection upstream; `LAND_SFC_ALTIMETER` in `evaluate_these_obs_types`
+  (prior/posterior H(x) in `obs_seq.final`, no update). First version had wind evaluate-only too;
+  kept as the alternative. All are compiled into our `filter` (Sec. 2).
 - **Localization:** the conventional `cutoff = 0.0235` for these too (no `special_localization_*`
   entry), as HRRRDAS uses one conventional pass.
 - **Errors (converter, not namelist):** RAP effective mesonet values T 3.0 K, q 7 % RH, wind
