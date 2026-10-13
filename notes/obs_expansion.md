@@ -165,12 +165,38 @@ The columns convert the ratio to the base error unit (ratio × the unboosted DAR
 2. **Per-type rescaling after conversion, instead of Fortran patches.** A small step after `convert_madis_hour.sh` (or in `make_cycle_obs.sh` before screening) that rewrites each observation's error variance from a config file: a factor or a pressure profile per type. This allows tuning many types without rebuilding converters. It must run before `wrf_dart_obs_preprocess`, so the boundary inflation is applied to the new errors.
 3. **Evidence needed first.** The pilot's 4 analyses had no radiosondes, and its statistics pool all levels. Bin `innovation_stats.py` by pressure (and time of day) on the extension.
 
-**ACARS humidity errors look larger than the data support** (ours 20 % RH; pilot implied/Desroziers 12–14 %; RAP 17–20 %). Weak evidence so far: 319 obs in one hour, pooled over levels, no instrument QC on WVSS (§2.13 of `wrf_dart_tutorial_adaptation.md`). Tightening to 14 % would double the weight of each report (variance ×2), a much smaller change than METAR's (×6–11 in variance). Proposed (not yet decided): keep 20 % for the extension, then decide from its pressure-binned statistics; a change would go through option 1 or 2 above.
+**ACARS humidity errors look larger than the data support** (ours 20 % RH; pilot implied/Desroziers 12–14 %; RAP 17–20 %). Weak evidence so far: 319 obs in one hour, pooled over levels, no instrument QC on WVSS (§2.13 of `wrf_dart_tutorial_adaptation.md`). Tightening to 14 % would double the weight of each report (variance ×2), a much smaller change than METAR's (×6–11 in variance). **Decided (user, 2026-10-13): keep 20 % for the extension**, then decide from its pressure-binned statistics; a change would go through option 1 or 2 above.
 
-## 6. Proposed order
+## 6. Order
+
+**Decided (user, 2026-10-13, session "Adding more obs part 2"): this order.** Not now: the correction notes on the two `codex.HRRRv4_*` notes and a Dowell et al. check on radial velocity in HRRRDAS.
 
 1. **Mesonet**: data, converter and `filter` are ready; the work is QC/selection and thinning.
 2. **MRMS reflectivity**: everything public, and the HRRR converter exists. Needs the state changes (Q8) and enough hydrometeor spread.
 3. **Radar radial velocity** (§4): shares the `REFL_10CM`-in-state work with MRMS; the pyOPAWS setup and a one-volume test can run alongside steps 1–2.
 4. **GOES satellite winds**: needs a new reader.
 5. VAD winds from `prep48h`: small patches, but only 6-hourly files; overlaps with radial velocity.
+
+## 7. Mesonet (started 2026-10-13)
+
+### 7.1 Profile of the public MADIS mesonet files
+
+`scripts/da/profile_madis_mesonet.py <mesonet hour> [<metar hour>]`, run on 05-20 18Z (plus counts at 00, 06, 12Z). Box = `convert_madis_hour.sh`'s lat/lon box.
+
+- **Volume.** ~198,000 records per hourly file, ~22,600 in the box from ~4,450 stations; nearly the same at 00, 06, 12, 18Z. `restrictedDataLevel` is missing everywhere (public set only).
+- **Providers (18Z, reports / stations):** APRSWXNET (CWOP citizen stations) 13,862 / 1,700; MesoWest 4,574 / 1,015; HADS 2,780 / 1,306; NonFedAWOS 337 / 127; MOComAgNet 262 / 22; RAWS 244 / 241; KSDOT 224 / 25; OHDOT 187 / 17; a few NOS, CRN, SURFRAD, LCRA. APRSWXNET is ~60 % of all T, Td and wind reports. HADS is mostly hydrological: 102 usable T and 117 wind of its 2,780 reports.
+- **MADIS QC.** The converter keeps a variable when its `*QCR` is 0 (`use_input_qc = .true.`). QCR = 0: T 18,378 of 18,819 present, Td 17,324 / 17,933, wind 17,742 / 18,094 (≈ 96–98 %). **Altimeter only 12,335 / 15,924 (77 %)**: APRSWXNET 10,266 / 13,649, failing mostly the spatial-consistency checks (QCR bits 6–7), as do most T, Td and wind failures. DD summary: mostly `V` (verified); failures are mostly `Q` (questioned).
+- **Time.** APRSWXNET and MesoWest report every 5 min (with peaks at :00, :15, :30, :45), NonFedAWOS every 20 min, RAWS hourly. In one cycle window (t ± 7.5 min, our `filter` window) at 18:15: 4,734 QCR = 0 T reports from 2,445 stations; 1,040 stations report once, 533 twice, 861 three times. ± 6 min (RRFS's mesonet window): 4,225 from 2,393. 00, 06, 12Z windows: 4,730–4,830 reports from ~2,450 stations.
+- **Duplicates with METAR.** 44 mesonet station IDs (all NonFedAWOS) are also METAR stations in the same hour (435 METAR stations in the box), so they would enter twice. 45 mesonet stations sit within 1 km of a METAR site (mostly the same NonFedAWOS ones, plus 9 RAWS).
+- **Density after one report per station:** ~2,450 stations per cycle over the 1,375 × 975 km domain, ~1 per 550 km² (mean spacing ~24 km, clustered in cities for APRSWXNET), against ~160 METAR T obs per cycle in the pilot. So mesonet would be ~15× the METAR count at the surface.
+- **Converter.** `convert_madis_mesonet` has no provider selection, no per-station time selection and no thinning; it writes every QCR = 0 report of the hour. Its errors come from the `land_*` functions in `ncep_obs_err_mod.f90` (DART defaults 2.5 K, 3.5 m/s, RH 0.2, 1.0 hPa), which no other converter we build uses, so they can be changed without touching METAR.
+- **Already in place downstream.** `input.nml.obs_preprocess` names `land_sfc_extra = 'obs_seq.land_sfc'` and its surface elevation check (`sfc_elevation_tol = 300` m) and boundary error inflation apply to `LAND_SFC_*` as to METAR. `make_cycle_obs.sh` doesn't have the family yet.
+
+### 7.2 Proposed design (for decision)
+
+1. **Per-cycle selection before the converter.** A Python step builds, for each analysis time t, a reduced `mesonet_input.nc` from the hourly files around t: records in (t − 450 s, t + 450 s] (the `filter` window, as for the other families), the **one record per station closest to t** (ties: the earlier one), **stations with a METAR ID in the same hour dropped**, then the stock converter and the box trim. Within the chosen record, a variable that fails QC is dropped, not taken from another record. Reason: 5-min stations would otherwise enter 2–3 times per cycle with correlated errors; the stock converter can't select, and DART has no surface thinning. The output is a per-cycle `obs_seq.land_sfc`, which `make_cycle_obs.sh` uses directly instead of slicing hourly files.
+2. **Variables in the first round: T and q assimilated; wind and altimeter evaluated only** (`evaluate_these_obs_types`), so `obs_seq.final` gives their innovation statistics without letting them act. Reasons: mesonet wind siting (rooftops, sheltered sensors in APRSWXNET) is the known weak point: deterministic HRRR loads a mesonet station use-list (§1; HRRRDAS's copy is commented out; contents not public); altimeter fails MADIS QC 23 % of the time. Decide wind and altimeter from their statistics.
+3. **Providers:** all, for T and q (HADS adds little either way). Per-provider statistics need the provider in the output; `obs_seq` can't carry it, so either separate per-provider runs of `innovation_stats.py` over separate obs files or a side table keyed by location. Proposed: keep a per-cycle CSV (station, provider, lat, lon, time, values) next to the obs file, and match by location when analysing.
+4. **Errors: RAP effective values** (§5): T 3.0 K, q 7 % RH, wind 3.0 m/s, altimeter 1.0 hPa (unchanged), through a local patch of the `land_*` functions, as for METAR. Alternative: keep DART's defaults (2.5 K, RH 0.2, 3.5 m/s) for a first look. RAP's mesonet T error is looser than its METAR error (3.0 vs 2.26 K) and its q error about the same (7 vs 5.9 % RH).
+5. **No spatial thinning at first; localization as for METAR** (one conventional cutoff, as HRRRDAS's single 300-km pass). Risk to watch: ~2,450 extra surface obs per cycle with 5 members may collapse low-level spread; check prior spread and the T/q consistency ratios. Fallbacks: superobbing on a ~10–20 km grid or a larger error.
+6. **Data.** All 72 hourly files of 05-19..05-21 are on disk (`obs/madis/mesonet/`, 2.1 GB, downloaded 2026-09-25 with the other MADIS families; `wrf_dart_tutorial_adaptation.md` 2.13). To add to `DATA_SOURCES.md` with the other MADIS families.

@@ -199,3 +199,20 @@ Recorded here because it changes what `filter` assimilates.
   is consistent), mesonet (`land_*`, DART defaults; to tune when mesonet is added).
 - `wrf_dart_obs_preprocess`'s boundary inflation (`maxobsfac = 2.5`) still multiplies these errors near
   the boundary.
+
+## Mesonet (`LAND_SFC_*`) in `&obs_kind_nml` and the converter errors — 2026-10-13 (proposed)
+
+Profile and full proposal: `notes/obs_expansion.md` Sec. 7. Nothing in `config/input.nml.filter` is
+changed yet.
+
+- **Proposed obs types:** `LAND_SFC_TEMPERATURE` and `LAND_SFC_SPECIFIC_HUMIDITY` in
+  `assimilate_these_obs_types`; `LAND_SFC_U_WIND_COMPONENT`, `LAND_SFC_V_WIND_COMPONENT` and
+  `LAND_SFC_ALTIMETER` in `evaluate_these_obs_types` (prior/posterior H(x) in `obs_seq.final`, no
+  update) until their innovation statistics are looked at. All are compiled into our `filter` (Sec. 2).
+- **Localization:** the conventional `cutoff = 0.0235` for these too (no `special_localization_*`
+  entry), as HRRRDAS uses one conventional pass.
+- **Errors (converter, not namelist):** RAP effective mesonet values T 3.0 K, q 7 % RH, wind
+  3.0 m/s, altimeter 1.0 hPa, by patching the `land_*` functions, which only `convert_madis_mesonet`
+  uses among our converters. Alternative: DART's defaults (2.5 K, RH 0.2, 3.5 m/s, 1.0 hPa).
+- **Per-station selection** (one report per station per cycle, METAR duplicates dropped) is a
+  preprocessing step, not a DART setting: DART has no surface thinning.
