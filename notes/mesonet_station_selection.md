@@ -47,11 +47,11 @@ IDs as used in this note and in the session. "Used in kept" refers to Sec. 5.
 
 S1's source file has the same name as RRFS v1's first choice (`current_mesonet_uselist.txt`), and S6 has the same format, so S1, S5 and S6 are the same GSL product at different dates (2026, operational, 2017).
 
-**How GSL builds the station list (S6 header).** From the table `RR1h_7day` (7 days of 1-h forecast minus observation; "RR" presumably the Rapid Refresh), separately for each variable, a station gets flag 1 if:
+**How GSL builds S1, S5 and S6 (from S6's header).** From the table `RR1h_7day` (7 days of 1-h forecast minus observation; "RR" presumably the Rapid Refresh), separately for each variable, a station gets flag 1 if:
 - T: N > 20, |bias| < 2.00 K, std < 2.50 K;
 - wind: N > 20, speed |bias| < 0.50 m/s and std < 1.50 m/s, direction |bias| < 40° and std < 90°, vector rms < 2.00 m/s;
 - Td: N > 20, |bias| < 1.20 K, std < 2.50 K.
-So the list is regenerated from recent statistics (RRFS v1 takes the previous day's), and the wind criteria are strict: of the 8,289 APRSWXNET stations in S6, 190 pass for wind and 8,113 for T.
+So S5 is regenerated from recent statistics (RRFS v1 takes the previous day's), and the wind criteria are strict: of the 8,289 APRSWXNET stations in S6, 190 pass for wind and 8,113 for T.
 
 Historical copies are read with `git -C ../software/HRRR show 14181fb1:hrrr.v3/fix/conus/<file>` and `git -C ../software/RRFSv1 show 4aa5a48d:fix/gsi/gsd_sfcobs_provider.txt`.
 
@@ -63,16 +63,16 @@ GSI chooses the method with `&RAPIDREFRESH_CLDSURF i_gsdsfc_uselist`, documented
 
 **GSD method, `i_gsdsfc_uselist = 1` (`apply_gsd_sfcuselist`).** Used by all three GSI systems here. Applied to kx 188, 195, 288, 295; each report and variable separately:
 1. Already rejected (usage ≥ 6): unchanged.
-2. Provider path: if the report's provider (first 8 characters) matches a `gsd_sfcobs_provider.txt` entry and its subprovider matches or the entry says `allsprvs`, the report is used, **for every variable, pressure included**.
-3. Otherwise it is rejected (usage 6000), unless a use-list file `gsd_sfcobs_uselist.txt` exists; then:
-   - T (kx < 200, obstype `t`): used if the station is on the use-list with T flag `1`.
+2. Provider path: if the report's provider (first 8 characters) matches an entry of the provider list GSI reads as `gsd_sfcobs_provider.txt` (P4 in all three systems) and its subprovider matches or the entry says `allsprvs`, the report is used, **for every variable, pressure included**.
+3. Otherwise it is rejected (usage 6000), unless the station list GSI reads as `gsd_sfcobs_uselist.txt` exists (S5 in deterministic HRRR and RRFS v1; absent in HRRRDAS); then:
+   - T (kx < 200, obstype `t`): used if the station is on S5 with T flag `1`.
    - q (obstype `q`): used if the station's Td flag is `1`.
    - wind (kx ≥ 200, obstype `uv`): used if the station's wind flag is `1`.
    - surface pressure (`ps`) has no station path: from an unlisted provider it stays rejected.
    Station match: the trimmed station ID equals the list ID, **or, for mesonet types, the station ID starts with the list ID** (prefix match).
-4. If neither file exists: every mesonet report is rejected. With only the provider list: only listed providers.
+4. If neither file exists: every mesonet report is rejected. With P4 but no S5 (HRRRDAS): only P4 providers.
 
-Separately, `i_gsdqc = 2` (set by HRRR, HRRRDAS and RRFS v1) adds: mesonet winds with u = v = 0 rejected (usage 115; kx 288 in HRRR's GSI, 288 and 295 in the GSI repo); 2-m dewpoints rejected if Td < min(−40 °C, T − 10 K), T − Td > 70 K or Td > 32.2 °C (types 180–189). Independently of mode: mesonet pressure is never used when the 8th character of the station ID is `x`.
+Separately, `i_gsdqc = 2` (set by HRRR, HRRRDAS and RRFS v1) adds: mesonet winds with u = v = 0 rejected (usage 115; kx 288 in HRRR's GSI, 288 and 295 in the GSI repo); 2-m dewpoints rejected if Td < min(−40 °C, T − 10 K), T − Td > 70 K or Td > 32.2 °C (types 180–189). Independently of the method: mesonet pressure is never used when the 8th character of the station ID is `x`.
 
 **Other methods, for context (not used by the systems here).** `= 2`: RTMA-style `sfcobs_uselist.txt`. `= 0`, EMC method (NAM, RTMA; `get_usagerj`): T, q, ps only through reject lists; mesonet wind rejected unless its provider is in `mesonetuselist` (P2-type), its station in `mesonet_stnuselist` (S3-type) or it passes `wbinuselist`.
 
@@ -91,7 +91,7 @@ Separately, `i_gsdqc = 2` (set by HRRR, HRRRDAS and RRFS v1) adds: mesonet winds
 | Surface pressure | listed providers only | listed providers only | listed providers only | all providers (quality marker as for T) |
 | convinfo | `hrrr_*` (not public) | `hrrrdas_regional_convinfo.15km.txt` (not public) | `convinfo.rrfs` from `${FIX_GSI}` (not in the repo; GSI-fix's `convinfo.rrfs`: 188/288 `iuse = 1`, ±0.1 h) | n/a (JEDI YAML: T error 4.0 K, GSI-style inflation, 200-km localization lengthscale) |
 
-So: every GSI system restricts mesonet by **provider**; deterministic HRRR and RRFS v1 add **stations** from GSL's daily list for T, q and wind; HRRRDAS uses providers only; RRFS v2 restricts **only the wind**. The provider list (P4) is a short list of 9 regional networks (HRRRv3 and RRFS v1 repo copies; HRRRv4's operational copy is not public but has the same file name and role), so **in the GSI systems almost all mesonet data come in through the station list**, and HRRRDAS, which has none, takes only those 9 networks. The current station lists (S5) are not public; S6 (2017) and S1 (2026) are dated copies of the same GSL product.
+So: every GSI system restricts mesonet by **provider**; deterministic HRRR and RRFS v1 add **stations** from S5 for T, q and wind; HRRRDAS uses providers only; RRFS v2 restricts **only the wind**. P4 is a short list of 9 regional networks (HRRRv3 and RRFS v1 repo copies; HRRRv4's operational copy is not public but has the same file name and role), so **in deterministic HRRR and RRFS v1 almost all mesonet data come in through S5**, and HRRRDAS, which has no station list, takes only the 9 P4 networks. S5 is not public; S6 (2017) and S1 (2026) are dated copies of the same GSL product.
 
 ## 5. Our "kept" counts (05-20 18Z) and how they were made
 
@@ -102,13 +102,13 @@ So: every GSI system restricts mesonet by **provider**; deterministic HRRR and R
 | Option | Rule | T | q | wind | altimeter |
 |---|---|---|---|---|---|
 | (a) RRFS v2 as it is | T, q, pressure: all providers; wind: P1 providers or S2 stations | 2,953 | 2,553 | 950 | 1,715 |
-| (b1) GSD method, deterministic HRRR / RRFS v1, 2026 station list | provider in P4 (9), or station flagged in S1 for that variable; pressure: P4 only | 2,108 | 815 | 41 | 3 |
-| (b2) same with the 2017 station list | P4, or station flagged in S6 | 932 | 799 | 160 | 3 |
+| (b1) GSD method, deterministic HRRR / RRFS v1, S1 for S5 | provider in P4 (9), or station flagged in S1 for that variable; pressure: P4 only | 2,108 | 815 | 41 | 3 |
+| (b2) GSD method, S6 for S5 | P4, or station flagged in S6 | 932 | 799 | 160 | 3 |
 | (c) HRRRDAS | P4 providers only | 4 | 0 | 2 | 3 |
 | (d) earlier stand-in (superseded) | P1 (20) instead of P4 for every variable; S1 for T/q, S2 for wind | 2,544 | 1,177 | 950 | 296 |
 
 Breakdown of (b1): via P4 only NOS-PORTS/NOS-NWLON (T 4, wind 2, altimeter 3); via S1: T 2,104 (APRSWXNET 1,251, MesoWest 470, RAWS 190, NonFedAWOS 93, HADS 41), q 815 (APRSWXNET 262, MesoWest 257, RAWS 184, NonFedAWOS 65), wind 39 (NonFedAWOS 19, RAWS 10, MesoWest 8). 06Z gives T 2,113, q 821, wind 35, altimeter 3. Breakdown of (d), via P1: T 1,175, q 838, wind 928, altimeter 296 (mostly MesoWest and RAWS); via S1/S2: T 1,369, q 339, wind 22.
 
-**Reading.** None of the 9 P4 networks has more than a handful of stations in our domain, so under the GSD method the station list decides everything, and its date matters: the 2017 and 2026 lists keep 932 vs 2,108 T stations (station IDs turn over, APRSWXNET especially). The GSD method keeps very few mesonet winds (41–160) and no mesonet pressure here. HRRRDAS, with providers only, would take essentially no mesonet in our domain, if its HRRRv4 provider list is still the 9-provider one.
+**Reading.** None of the 9 P4 networks has more than a handful of stations in our domain, so under the GSD method S5 decides everything, and its date matters: S6 (2017) and S1 (2026) keep 932 vs 2,108 T stations (station IDs turn over, APRSWXNET especially). The GSD method keeps very few mesonet winds (41–160) and no mesonet pressure here. HRRRDAS, with providers only, would take essentially no mesonet in our domain, if its HRRRv4 copy of P4 still holds the same 9 providers.
 
-**Limits.** Calm winds were dropped for every option; RRFS v2 has no calm-wind check (its wind observer has only bounds, domain, background and quality-marker checks), so (a) would also take the calm reports of its accepted stations. P4 is the HRRRv3/RRFS v1 repo copy; the HRRRv4 and current RRFS v1 operational lists are not public. Neither S1 (2026) nor S6 (2017) is the May 2025 list RRFS v1 would have used. One hour, per hour rather than per 15-min cycle; the 44 NonFedAWOS stations that duplicate METAR are not removed.
+**Limits.** Calm winds were dropped for every option; RRFS v2 has no calm-wind check (its wind observer has only bounds, domain, background and quality-marker checks), so (a) would also take the calm reports of its accepted stations. P4 is the HRRRv3/RRFS v1 repo copy; the HRRRv4 and current RRFS v1 operational copies of P4 are not public. Neither S1 (2026) nor S6 (2017) is the May 2025 S5 that RRFS v1 would have used. One hour, per hour rather than per 15-min cycle; the 44 NonFedAWOS stations that duplicate METAR are not removed.

@@ -207,8 +207,8 @@ changed yet.
 
 - **Proposed obs types (revised the same day after checking HRRR/RRFS, Sec. 7.3):**
   `LAND_SFC_TEMPERATURE`, `LAND_SFC_SPECIFIC_HUMIDITY`, `LAND_SFC_U_WIND_COMPONENT` and
-  `LAND_SFC_V_WIND_COMPONENT` in `assimilate_these_obs_types`, after GSD-style provider/station
-  selection and calm-wind rejection upstream; `LAND_SFC_ALTIMETER` in `evaluate_these_obs_types`
+  `LAND_SFC_V_WIND_COMPONENT` in `assimilate_these_obs_types`, after provider/station selection
+  (P1 + S2 or P4 + S1/S6, `mesonet_station_selection.md` Sec. 5; open) and calm-wind rejection upstream; `LAND_SFC_ALTIMETER` in `evaluate_these_obs_types`
   (prior/posterior H(x) in `obs_seq.final`, no update). First version had wind evaluate-only too;
   kept as the alternative. All are compiled into our `filter` (Sec. 2).
 - **Localization:** the conventional `cutoff = 0.0235` for these too (no `special_localization_*`
