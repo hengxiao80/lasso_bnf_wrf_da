@@ -42,8 +42,9 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   00Z initial members) done 2026-10-02. Step 12 (cycle scripts: `slurm.cycle` → `scripts/da/driver.sh` → `cycle_job.sh`, `prep_filter.sh`, `post_filter.sh`, `advance_member.sh`, `check_cycle.py`) written 2026-10-02. Step 13 (1-hour pilot, 00:00 cold start + 4 analyses, ~32 min on 40 nodes) passed 2026-10-02/03 in four runs side by side (`RUN_NAME`: `run*/`, `output*/`): DART's PH, hydrostatic PH (`_hph`; removes most of the post-analysis shock; `HYDROSTATIC_PH=1` is the default since 2026-10-03), and two quick inflation looks (`_hph_d9956`, `_hph_f5`); fuller inflation tests postponed by the user. Next: step 14, the extension.
 - **METAR observation errors are not DART's defaults** (since 2026-10-03): T2 1.26 K, 10-m wind 1.59 m/s,
   RH 0.059, from NCEP's NAM/RAP tables, via `patches/dart_7bbd35a09_madis_metar_obs_errors.patch`. The 1-hour
-  pilot used the defaults; the extension uses the new values. Radiosonde, ACARS and mesonet errors are still
-  DART's. Observation-expansion work (HRRRDAS inventory, error comparison, radar plans): `notes/obs_expansion.md`.
+  pilot used the defaults; the extension uses the new values. **Mesonet errors** (since 2026-10-14): T 3.0 K,
+  wind 3.0 m/s, RH 0.07, altimeter 1.0 hPa (RAP/RRFS), via `patches/dart_7bbd35a09_madis_mesonet_obs_errors.patch`.
+  Radiosonde and ACARS errors are still DART's. Observation-expansion work (HRRRDAS inventory, error comparison, radar plans): `notes/obs_expansion.md`.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
   conversion, and the NCEP/prepbufr conventional-observation
   pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —

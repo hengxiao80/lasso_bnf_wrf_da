@@ -1,0 +1,29 @@
+--- a/observations/obs_converters/obs_error/ncep_obs_err_mod.f90
++++ b/observations/obs_converters/obs_error/ncep_obs_err_mod.f90
+@@ -156,7 +156,7 @@
+ 
+ real(r8) :: land_rel_hum_error
+ 
+-land_rel_hum_error = 0.2_r8
++land_rel_hum_error = 0.07_r8   ! local patch: RAP/RRFS errtable type 188 (was 0.2)
+ 
+ return
+ end function land_rel_hum_error
+@@ -180,7 +180,7 @@
+ 
+ real(r8) :: land_temp_error
+ 
+-land_temp_error = 2.5_r8
++land_temp_error = 3.0_r8   ! local patch: RAP/RRFS type 188, 4.0 clipped to convinfo ermax 3.0 (was 2.5)
+ 
+ return
+ end function land_temp_error
+@@ -204,7 +204,7 @@
+ 
+ real(r8) :: land_wind_error
+ 
+-land_wind_error = 3.5_r8
++land_wind_error = 3.0_r8   ! local patch: RAP/RRFS errtable type 288 (was 3.5)
+ 
+ return
+ end function land_wind_error

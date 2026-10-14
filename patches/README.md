@@ -201,3 +201,35 @@ pinned upstream commit, why it was needed, and how it was applied.
   values, only the error variances differ. The old files (used by the 1-hour pilot) are kept in
   `cases/20250520/obs/obs_seq_madis/metar_v1_dart_land_errors/`. The pilot's per-cycle files
   (`da_theta_m0/obs/202505200015`–`202505200100`) were built from those and are left as they are.
+
+## dart_7bbd35a09_madis_mesonet_obs_errors.patch
+
+**This changes the observation errors of all mesonet observations (`LAND_SFC_*`), away from DART's defaults.**
+
+- **Applies to:** DART commit `7bbd35a0995726b0274dc73a1b5783979d0f42d9` (v11.25.3), file
+  `observations/obs_converters/obs_error/ncep_obs_err_mod.f90`, on top of
+  `dart_7bbd35a09_madis_metar_obs_errors.patch` (which moved METAR off the `land_*` functions). Rebuild with
+  `observations/obs_converters/MADIS/work/quickbuild.sh convert_madis_mesonet`.
+- **Why:** mesonet is being added (`notes/obs_expansion.md` Sec. 7.2 item 4). Decided by the user 2026-10-14:
+  the RAP/RRFS mesonet errors, the mesonet counterpart of the NCEP values taken for METAR. NCEP's regional
+  tables give mesonet (types 188/288) larger errors than METAR (187/287); see the discussion log entry of
+  2026-10-14.
+- **Fix:** new values of the `land_*` functions (NCEP tables from NOAA-EMC/GSI-fix `0ba656b6`, in
+  `../software/GSI-fix_subset/`; RAP `rap_nam_errtable.r3dv` and RRFS `errtable.rrfs` have the same
+  188/288 rows, and RAP and RRFS v1 clip them with the same `convinfo` bounds):
+
+  | Function | Stock | Now | Source |
+  |---|---|---|---|
+  | `land_temp_error` | 2.5 K | **3.0 K** | type 188 table value 4.0 K, clipped to `convinfo` `ermax` 3.0 K (RAP, RRFS v1) |
+  | `land_wind_error` | 3.5 m/s | **3.0 m/s** | type 288 |
+  | `land_rel_hum_error` | 0.2 | **0.07** (RH fraction; q error = 0.07 × q_sat) | type 188 |
+  | `land_pres_error` | 1.0 hPa | 1.0 hPa (unchanged) | type 188 table value 0.54 hPa, raised to `ermin` 1.0 hPa |
+
+- **Side effect:** `land_*` is otherwise used only by `obs_converters/ok_mesonet/convert_ok_mesonet.f90`
+  (Oklahoma Mesonet), which we don't build. `convert_madis_metar` uses `metar_*` since the METAR patch.
+- **Applied:** 14 October 2026. Rebuild log `MADIS/work/quickbuild_mesonet_errors.log`; the previous
+  executable is kept as `MADIS/work/convert_madis_mesonet.pre_mesonet_errors`. Check (cycle 2025-05-20 01:15,
+  option a, from `scripts/da/make_cycle_mesonet.sh`): the same selected input converted with the old and
+  the new executable gives the same 6,822 observations; error sd T 2.5 → 3.0 K, u and v 3.5 → 3.0 m/s,
+  altimeter 1.0 hPa unchanged, q exactly 0.35 × the old value for every observation. No mesonet observations
+  had been used in any run before.

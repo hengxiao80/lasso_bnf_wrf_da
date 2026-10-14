@@ -2,7 +2,7 @@
   "host": {
     "hostname": "cirrus-login1.ccs.ornl.gov",
     "uname": "Linux cirrus-login1.ccs.ornl.gov 4.18.0-553.158.1.el8_10.x86_64 #1 SMP Sun Aug 23 20:58:55 EDT 2026 x86_64 x86_64 x86_64 GNU/Linux",
-    "generated_at_utc": "2026-10-03T20:32:45.956423Z",
+    "generated_at_utc": "2026-10-14T07:26:27.629347Z",
     "generated_by": "audit_configuration.py"
   },
   "modules": {
@@ -384,10 +384,12 @@
           "?? models/wrf/work/quickbuild.log",
           "?? models/wrf/work/quickbuild_fp_precise.log",
           "?? models/wrf/work/quickbuild_wrf_bc_patch.log",
+          "?? observations/obs_converters/MADIS/work/convert_madis_mesonet.pre_mesonet_errors",
           "?? observations/obs_converters/MADIS/work/convert_madis_metar.pre_metar_errors",
           "?? observations/obs_converters/MADIS/work/quickbuild.log",
           "?? observations/obs_converters/MADIS/work/quickbuild_acars.log",
           "?? observations/obs_converters/MADIS/work/quickbuild_fp_precise.log",
+          "?? observations/obs_converters/MADIS/work/quickbuild_mesonet_errors.log",
           "?? observations/obs_converters/MADIS/work/quickbuild_metar_errors.log",
           "?? observations/obs_converters/MADIS/work/quickbuild_rawin.log",
           "?? observations/obs_converters/NCEP/prep_bufr/install.log"
@@ -684,6 +686,11 @@
       "file": "dart_7bbd35a09_madis_acars_wvss_humidity.patch",
       "sha256": "e9c1bc51207d2f65110acf6f66b7f1b35669d47e6c4ebee68075b3d8401e42c9",
       "size_bytes": 3658
+    },
+    {
+      "file": "dart_7bbd35a09_madis_mesonet_obs_errors.patch",
+      "sha256": "5f351a7303283ee051cc1ec7d917b77ff88a88f9c41aa231bef755a21d03ca1d",
+      "size_bytes": 766
     },
     {
       "file": "dart_7bbd35a09_madis_metar_obs_errors.patch",

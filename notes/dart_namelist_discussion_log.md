@@ -220,3 +220,22 @@ changed yet.
   uses among our converters. Alternative: DART's defaults (2.5 K, RH 0.2, 3.5 m/s, 1.0 hPa).
 - **Per-station selection** (one report per station per cycle, METAR duplicates dropped) is a
   preprocessing step, not a DART setting: DART has no surface thinning.
+
+## Mesonet observation errors (converter, not `input.nml`) — 2026-10-14
+
+Like the METAR errors (2026-10-03 entry), set by the converter's compiled functions, not by a namelist;
+`filter` takes the error variance from `obs_seq.out`.
+
+- **Changed (user, 2026-10-14), local patch `patches/dart_7bbd35a09_madis_mesonet_obs_errors.patch`:**
+  the `land_*` functions in `ncep_obs_err_mod.f90`, used only by `convert_madis_mesonet` among our
+  converters: T 2.5 → 3.0 K, 10-m wind 3.5 → 3.0 m/s, RH 0.2 → 0.07 (q error = 0.07 × q_sat), altimeter
+  1.0 hPa unchanged. These are the RAP/RRFS v1 values: NCEP table type 188/288 (4.0 K, 7 %, 3.0 m/s,
+  0.54 hPa) clipped to the `convinfo` bounds (T ≤ 3.0 K, pressure ≥ 1.0 hPa).
+- **Why not our METAR values:** NAM, RAP and RRFS all give mesonet larger errors than METAR (T 4.0 vs
+  2.26 K in RAP/RRFS, wind 3.0 vs 1.59 m/s, q 7 vs 5.9 % RH), and RAP, RRFS v1 and RRFS v2 keep the
+  difference. Our METAR T (1.26 K, NAM) came from the pilot's METAR statistics; mesonet has none yet.
+  Check against mesonet innovation statistics once it is assimilated.
+- `wrf_dart_obs_preprocess`'s boundary inflation (`maxobsfac = 2.5`) still multiplies these errors near
+  the boundary. RRFS v2's per-observation error inflation (pressure check, quality marker) has no DART
+  counterpart here.
+- Details: `notes/obs_expansion.md` Sec. 7.2 item 4.
