@@ -73,6 +73,8 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   files), `baseline/` (`real.exe` outputs in place), `hybrid2/` and `theta_m0/` (`real.exe` run in a
   `real/` subdirectory, then linked up), `iotest/`, `figures/`, and `DATA_SOURCES.md`.
 - `patches/`: local deviations from the pinned upstream code, with the reasons.
+- `notes/handoffs/`: hand-off messages between sessions (`YYYY-MM-DD_<session title>.md`); the latest says where
+  the work stands and what comes next.
 
 ## Environment and conventions
 
