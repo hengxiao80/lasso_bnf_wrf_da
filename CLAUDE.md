@@ -46,6 +46,10 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   wind 3.0 m/s, RH 0.07, altimeter 1.0 hPa (RAP/RRFS), via `patches/dart_7bbd35a09_madis_mesonet_obs_errors.patch`.
   Radiosonde and ACARS errors are still DART's. Observation-expansion work (HRRRDAS inventory, error comparison, radar plans): `notes/obs_expansion.md`.
 - **Mesonet** (2026-10-13/14): per-cycle selection and conversion written and tested (`scripts/da/make_cycle_mesonet.sh`, `select_mesonet_cycle.py`; options a / b1 / c, a first; list files and reference systems in `notes/mesonet_station_selection.md`). **Not wired in yet**: `make_cycle_obs.sh` doesn't pass `obs_seq.land_sfc` to `wrf_dart_obs_preprocess`, and `input.nml.filter` doesn't list `LAND_SFC_*` (`notes/obs_expansion.md` Sec. 7.2).
+- **MRMS reflectivity** (2026-10-14, `notes/obs_expansion.md` Sec. 8): `scripts/da/mrms_to_obs_seq.py` (Python port of HRRR's
+  MRMS→DART program, HRRRDAS settings) tested on 00:15; not wired into the cycle (state, `input.nml.filter`, obs merge still to do).
+  **WRF is patched** so `REFL_10CM` is in `wrfrst` (`patches/wrf_06d4240a_refl_10cm_restart.patch`, rebuilt and tested
+  2026-10-14; old executables kept as `main/*.exe.pre_refl_restart`). Restart files written before then lack `REFL_10CM`.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
   conversion, and the NCEP/prepbufr conventional-observation
   pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —

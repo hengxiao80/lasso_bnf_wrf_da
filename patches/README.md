@@ -28,6 +28,37 @@ pinned upstream commit, why it was needed, and how it was applied.
 - **Applied:** 17 September 2026, before the first successful `./compile em_real`
   at this commit on Cirrus.
 
+## wrf_06d4240a_refl_10cm_restart.patch
+
+- **Applies to:** WRF commit `06d4240ae989cc3e50af412bb472df3d9048783c` (v4.8.0),
+  file `Registry/Registry.EM_COMMON` (line 1611).
+- **Why:** MRMS reflectivity assimilation (`notes/obs_expansion.md` Sec. 8) needs `REFL_10CM`
+  (Thompson's 10-cm reflectivity, H(x) for `RADAR_REFLECTIVITY`) in the DART state. DART's input is
+  extracted from each member's `wrfrst` (`scripts/da/wrfrst_dart.py extract`), but `REFL_10CM`'s I/O
+  flags are `hdu` (history, nest down/up), so it is not in restart files, and WRF's runtime I/O
+  (`iofields_filename`) can change only the history and input streams (`frame/module_domain.F`,
+  `modify_io_masks`), not the restart stream. Decided (user, 2026-10-14): add it to the restart stream
+  (option A) rather than read it from the member's `wrfout` (option B).
+- **Fix:** I/O flags `hdu` → `hdur` for `refl_10cm`. Nothing else changes: Thompson still computes it only
+  on history-alarm steps (`solve_em.F` `diag_flag`), so a `wrfrst` at t holds the same array as the
+  `wrfout` at t when history and restart times coincide (15 min in our cycling). On restart the field
+  is read back and overwritten at the next history step. About +130 MB per 550 × 390 × 150 restart
+  file (13.1 GB now).
+- **Applied:** 14 October 2026, with `git apply`, then `./clean` (keeps `configure.wrf`, checked unchanged)
+  and `./compile -j 8 em_real` (`compile_em_real_refl_restart.log`, 38 min on the login node, "Executables
+  successfully built", no ignored errors). Check: the generated `inc/allocs_6.f90` now gives `refl_10cm`
+  `streams(1) = 1` (history) and `streams(2) = 2097152` (restart, as for the restart-only `SNOWNCV`);
+  `mskf_refl_10cm` (still `hdu`) has only the history bit. New `wrf.exe` sha256 `886b76cd…`, `real.exe`
+  `2c09ef19…` (`software_lock.json`). The executables used by every run before this date
+  (`wrf.exe` `0066e888…`, `real.exe` `ab92e99f…`) are kept as `main/*.exe.pre_refl_restart`.
+- **Tested** 2026-10-14, job 1051956 (`cases/20250520/da_theta_m0/slurm.refl_restart_test`, `scripts/da/check_refl_restart.py`,
+  `tests/refl_restart/`, 8 nodes, 10 min), all checks passed: `REFL_10CM` is in the new `wrfrst` at 00:15 and 00:30 and
+  bit-identical to `wrfout` (−35.0 .. 69.8 / 72.2 dBZ); the new 00:15 `wrfrst` equals the pre-patch one (step-7 test,
+  old `wrf.exe`) in all 657 common variables, `REFL_10CM` being the only extra; a restart from the pre-patch file (no
+  `REFL_10CM`) runs without any warning and gives the same 00:30 `wrfout` (287 variables) and `wrfrst` (658) as a
+  restart from the new file. Restart file 13,261,878,800 vs 13,134,596,180 bytes (+127 MB). Test output (`tests/refl_restart/`,
+  71 GB) deleted 2026-10-14 at the user's request; the job log `slurm.refl_restart_test.1051956.out` is kept.
+
 ## wps_configure_ldflags_qopenmp.patch
 
 - **Applies to:** WPS commit `335c76a111f84503e8b963abaf273ea8053645bb` (v4.6.0),

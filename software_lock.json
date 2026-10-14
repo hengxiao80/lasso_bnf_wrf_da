@@ -2,7 +2,7 @@
   "host": {
     "hostname": "cirrus-login1.ccs.ornl.gov",
     "uname": "Linux cirrus-login1.ccs.ornl.gov 4.18.0-553.158.1.el8_10.x86_64 #1 SMP Sun Aug 23 20:58:55 EDT 2026 x86_64 x86_64 x86_64 GNU/Linux",
-    "generated_at_utc": "2026-10-14T07:26:27.629347Z",
+    "generated_at_utc": "2026-10-14T20:09:46.289650Z",
     "generated_by": "audit_configuration.py"
   },
   "modules": {
@@ -30,7 +30,8 @@
         "commit": "06d4240ae989cc3e50af412bb472df3d9048783c",
         "working_tree_dirty": true,
         "dirty_files": [
-          "M phys/TEMPO",
+          "M Registry/Registry.EM_COMMON",
+          " M phys/TEMPO",
           " M phys/noahmp",
           " M phys/physics_mmm",
           "?? Registry/Registry",
@@ -53,6 +54,10 @@
           "?? inc/dm_comm_cpp_flags",
           "?? inc/wrf_io_flags.h",
           "?? inc/wrf_status_codes.h",
+          "?? main/ndown.exe.pre_refl_restart",
+          "?? main/real.exe.pre_refl_restart",
+          "?? main/tc.exe.pre_refl_restart",
+          "?? main/wrf.exe.pre_refl_restart",
           "?? phys/module_bl_mynnedmf.F",
           "?? phys/module_bl_mynnedmf_common.F",
           "?? phys/module_bl_mynnedmf_driver.F",
@@ -77,6 +82,7 @@
           "?? run/namelist.input",
           "?? run/namelist.input.backup.2026-09-17_20_54_56",
           "?? run/namelist.input.backup.2026-09-17_21_22_47",
+          "?? run/namelist.input.backup.2026-10-14_16_08_56",
           "?? test/em_real/BROADBAND_CLOUD_GODDARD.bin",
           "?? test/em_real/README.namelist",
           "?? test/em_real/README.physics_files",
@@ -148,9 +154,9 @@
           "is_symlink": false,
           "resolved_path": "/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/WRF/main/real.exe",
           "size_bytes": 58610384,
-          "mtime_utc": "2026-09-18T01:22:47.405903Z",
-          "sha256": "ab92e99f84a3a0a673e99ae572a0043c3880a8247ad98cc03fc28a2170c3c75a",
-          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=6128f3adaef09d7cf282b183d8f6ca870ade5590, not stripped"
+          "mtime_utc": "2026-10-14T20:08:55.780049Z",
+          "sha256": "2c09ef1931f77c4e5a6fa719f61c5a47920eef276240c234aa742f5641cf4469",
+          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=c271ae9409393c531f48485eac635d8cde0f54c2, not stripped"
         },
         {
           "path": "main/wrf.exe",
@@ -158,9 +164,9 @@
           "is_symlink": false,
           "resolved_path": "/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/WRF/main/wrf.exe",
           "size_bytes": 75056496,
-          "mtime_utc": "2026-09-18T01:22:43.813727Z",
-          "sha256": "0066e888d91c20e41f7a24fbdf4dc2cfc17b594cb8e9d93dccf3f31855edc0d1",
-          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=839c1252d0176e7f869fe48d5e7ec311f0ff6b1d, not stripped"
+          "mtime_utc": "2026-10-14T20:07:41.150956Z",
+          "sha256": "886b76cd8aebdf23b44039b3048334794cc83f414e49ca5568bd8a06840a3c9d",
+          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=34453e4b1ccd86c78437c972b66cb64a921417af, not stripped"
         },
         {
           "path": "main/ndown.exe",
@@ -168,9 +174,9 @@
           "is_symlink": false,
           "resolved_path": "/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/WRF/main/ndown.exe",
           "size_bytes": 63845688,
-          "mtime_utc": "2026-09-18T01:22:45.281108Z",
-          "sha256": "2e0ad83f88dbc3606f80d9949283dbcfc77e5201929b26c88be40411433badab",
-          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=3c6dfb2591296e45e9b9660821d2fa135b814169, not stripped"
+          "mtime_utc": "2026-10-14T20:08:53.667141Z",
+          "sha256": "acb8a56efe1841131961b82d2c0fb92fab7e5e5662c3e3f9a65ab818da3fe20f",
+          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=5a12b062a7b3671d0e3d35cb2d8bdba9b5a6aa84, not stripped"
         },
         {
           "path": "main/tc.exe",
@@ -178,9 +184,9 @@
           "is_symlink": false,
           "resolved_path": "/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/WRF/main/tc.exe",
           "size_bytes": 57837088,
-          "mtime_utc": "2026-09-18T01:22:46.369722Z",
-          "sha256": "aa1eb7fff3479aad2a7b75397e7dfeea0d357f7d36774dc7a513ec33516e6083",
-          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=ac7614a2c81fe83db0cc44fa30c6d43596cc4bc6, not stripped"
+          "mtime_utc": "2026-10-14T20:08:54.712868Z",
+          "sha256": "c01f81b5e2ea4ceda0331316a128b89c1d52fa7b58f422671f71e9268c83f8bc",
+          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=8b2542188ea149a1a95678b242ea45ff7085f285, not stripped"
         }
       ]
     },
@@ -721,6 +727,11 @@
       "file": "wps_335c76a1_configure.wps.reference",
       "sha256": "c7058006e63687463a80140bfc645ebb2cd25a765bf11ea57d3e351b8315e3a7",
       "size_bytes": 3647
+    },
+    {
+      "file": "wrf_06d4240a_refl_10cm_restart.patch",
+      "sha256": "018007a0837ae40a1e0cc935216a4cc798579917ad5a4ed166e39bf29c15dab3",
+      "size_bytes": 1300
     },
     {
       "file": "wrf_06d4240a_tempo_error_stop_ifort_fix.patch",

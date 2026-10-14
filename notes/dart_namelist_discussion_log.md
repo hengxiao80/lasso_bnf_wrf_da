@@ -239,3 +239,22 @@ Like the METAR errors (2026-10-03 entry), set by the converter's compiled functi
   the boundary. RRFS v2's per-observation error inflation (pressure check, quality marker) has no DART
   counterpart here.
 - Details: `notes/obs_expansion.md` Sec. 7.2 item 4.
+
+## MRMS reflectivity: `&obs_def_radar_mod_nml`, error, localization — 2026-10-14 (nothing changed yet)
+
+Came up while making the first MRMS `obs_seq` (`notes/obs_expansion.md` Sec. 8).
+
+- **`microphysics_type`**: `input.nml.filter` has the default 2. `get_expected_radar_ref` always tries
+  `QTY_RADAR_REFLECTIVITY` (state `REFL_10CM`) first; if that fails, 1/2 silently fall back to a Lin-type
+  Z from qr/qs/qg (not Thompson-consistent), while 3/5 stop with a message. Proposed: **5**, set when
+  `REFL_10CM` goes into the state (Sec. 8.4 step 5).
+- **`apply_ref_limit_to_fwd_op`** (now `.false.`): `REFL_10CM` reaches −35 dBZ in clear air (Thompson floor) while the
+  clear-air obs are −10 dBZ. Checked 2026-10-14: HRRRDAS's GSI observer floors H(x) at `static_gsi_nopcp_dbz = -10`
+  (`setupdbz.f90:441`, EnKF runs) and the obs at −10 (`read_dbz_nc.f90:372`). Proposed: `apply_ref_limit_to_fwd_op = .true.`,
+  `reflectivity_limit_fwd_op = -10.0`, `lowest_reflectivity_fwd_op = -10.0` (same floor). With it, clear-air obs act only
+  where members have echo above −10 dBZ. Not changed yet (`notes/obs_expansion.md` Sec. 8.3).
+- **Observation error**: 5 dBZ for both types, as HRRRDAS; set by the converter
+  (`scripts/da/mrms_to_obs_seq.py --dbz-error-sd`), not by a namelist.
+- **Localization / impact**: HRRRDAS's separate pass, 18-km zero influence → `cutoff` ≈ 0.00141 for
+  `RADAR_REFLECTIVITY` and `RADAR_CLEARAIR_REFLECTIVITY` via `special_localization_obs_types`; which
+  quantities they update (`obs_impact_tool`) or a second `filter` call. Open (Sec. 8.4 step 6).

@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "WRF-DART radar+conventional data assimilation for LASSO BNF LES forcing"
 requires-python = ">=3.11"
 dependencies = [
+    "eccodes>=2.49.0",
+    "eccodeslib>=2.49.0.30",
     "matplotlib>=3.11.2",
     "netcdf4>=1.7.4",
     "pyyaml>=6.0.3",
