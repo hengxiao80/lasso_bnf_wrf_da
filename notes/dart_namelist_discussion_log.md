@@ -258,3 +258,29 @@ Came up while making the first MRMS `obs_seq` (`notes/obs_expansion.md` Sec. 8).
 - **Localization / impact**: HRRRDAS's separate pass, 18-km zero influence → `cutoff` ≈ 0.00141 for
   `RADAR_REFLECTIVITY` and `RADAR_CLEARAIR_REFLECTIVITY` via `special_localization_obs_types`; which
   quantities they update (`obs_impact_tool`) or a second `filter` call. Open (Sec. 8.4 step 6).
+
+## Mesonet wired in: `&obs_kind_nml` types; `&wrf_obs_preproc_nml` duplicate-location test under `r8 = r4` — 2026-10-14
+
+Follows the 2026-10-13 proposal above (`notes/obs_expansion.md` Sec. 7.2, "Wired in").
+
+- **`&obs_kind_nml` (changed, `config/input.nml.filter`):** `LAND_SFC_U_WIND_COMPONENT`, `LAND_SFC_V_WIND_COMPONENT`,
+  `LAND_SFC_TEMPERATURE`, `LAND_SFC_SPECIFIC_HUMIDITY` added to `assimilate_these_obs_types`;
+  `evaluate_these_obs_types = 'LAND_SFC_ALTIMETER'` (was empty). Nothing else changed: same `cutoff`, no special
+  localization. Runs on observation sets without mesonet (`obs/` of step 13) are unaffected.
+- **Found: `wrf_dart_obs_preprocess` drops METAR reports near mesonet sites.** `add_supplimental_obs` adds
+  `land_sfc_extra` before `metar_extra` (both into the surface sequence) and skips a report whose location is a
+  duplicate of one already there (`original_observation`: horizontal `get_dist` <= 1e-5 rad, ~60 m), for all its
+  variables, whatever the times. Our DART has `r8 = r4` (`patches/dart_7bbd35a09_types_mod_r8_as_r4.patch`), so
+  `get_dist` is float32 `acos` of a sum of sin/cos products: the value next below 1.0 gives 3.45e-4 rad (2.2 km),
+  and the products' rounding (~1e-7) blurs the edge. Simulated (2 million pairs at 29–41 N): "duplicate" for ~90 %
+  of pairs within 1.25 km, 52 % at 1.5–1.75 km, 20 % at 2.25–2.5 km, 2 % at 3–3.25 km, none beyond 3.7 km. Seen:
+  00:15 lost 4 of 139 METAR stations, 01:00 lost 16 of 315, to mesonet sites 0.4–2.5 km away.
+- **Decided (user, 2026-10-14): METAR takes precedence, per window.** `select_mesonet_cycle.py` drops mesonet sites
+  within 4 km (`--metar-radius-km`, covers the whole band above) of a METAR report of the same cycle window, taken
+  from the converted hourly METAR `obs_seq` files, i.e. the reports the preprocessor sees. The hourly METAR-ID check
+  stays. Result: METAR counts after screening identical to the MADIS-only set in all four pilot cycles; 10–113 of
+  ~2,450 mesonet sites dropped per cycle (113 at 01:00, when the hourly METARs fall in the window; per-variable
+  counts in `obs_expansion.md` Sec. 7.2).
+- **Wider note:** with `r8 = r4`, every DART great-circle distance below ~2 km is unreliable (0 or ~2.2 km). Harmless
+  for localization (weights ~1 there), but any "same location" test in DART tools is effectively a ~2-km test.
+  Marine reports are added before land surface too, so mesonet near a marine report would be dropped; none in our domain.

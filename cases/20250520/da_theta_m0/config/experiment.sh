@@ -41,7 +41,16 @@ RUN_NAME=${RUN_NAME:-}
 INIT_DIR=${EXP_DIR}/run                      # memNNN/wrfinput_d01: initial members (step 5), all runs
 RUN_DIR=${EXP_DIR}/run${RUN_NAME}            # memNNN/ (latest wrfrst, DART-facing file), filter/
 OUTPUT_DIR=${EXP_DIR}/output${RUN_NAME}      # <t>/: status, filter/, memNNN/ (Q10 retention)
-OBS_DIR=${EXP_DIR}/obs                       # <t>/obs_seq.out from make_cycle_obs.sh
+# Observation sets: make_cycle_obs.sh writes ${OBS_DIR}/<t>/obs_seq.out, the cycles read it. obs/ is the
+# step 13 set (MADIS families, METAR with DART's land errors, built 2026-10-02); a new set gets its own
+# OBS_NAME, and make_cycle_obs.sh records its contents in ${OBS_DIR}/obs_settings.txt.
+# Sets so far: obs_madis (MADIS families, NCEP METAR errors; reference for the mesonet/MRMS tests),
+# obs_meso_a_calmkeep (+ mesonet a, calm kept).
+OBS_NAME=${OBS_NAME:-}
+OBS_DIR=${EXP_DIR}/obs${OBS_NAME}            # <t>/obs_seq.out from make_cycle_obs.sh
+# Mesonet (obs_expansion.md Sec. 7.2): none, or <option>_calm<calm> as in make_cycle_mesonet.sh
+# (a_calmkeep, a_calmdrop, b1_calmkeep, ...). Used by make_cycle_obs.sh only.
+MESONET=${MESONET:-none}
 BDY_DIR=${EXP_DIR}/bdy                       # pristine wrfbdy_d01_memNNN (step 6), never modified
 DART_WORK=${SOFTWARE_DIR}/DART/models/wrf/work
 SEC_TABLE=${SOFTWARE_DIR}/DART/assimilation_code/programs/gen_sampling_err_table/work/sampling_error_correction_table.nc

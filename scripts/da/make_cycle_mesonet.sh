@@ -29,7 +29,7 @@ rm -rf "${out}"
 mkdir -p "${out}"
 
 "${PYTHON}" "${SCRIPT_DIR}/select_mesonet_cycle.py" "${stamp}" "${out}" --option "${option}" \
-   --calm "${calm}" --case-dir "${CASE_DIR}" --software-dir "${SOFTWARE_DIR}" > /dev/null
+   --calm "${calm}" --grid-file "${GRID_FILE}" --case-dir "${CASE_DIR}" --software-dir "${SOFTWARE_DIR}" > /dev/null
 
 # The converter reads mesonet_input.nc and appends to obs_seq.mesonet if it exists: fresh work dir.
 work=${out}/work

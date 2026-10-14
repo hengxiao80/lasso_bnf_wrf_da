@@ -141,6 +141,9 @@
 # The 18 types in the step 9/10 files. Marine is screened out in this domain (step 9) but kept
 # for a domain that reaches open water. ACARS humidity has no instrument QC (note 2.13) and
 # relies on the outlier check.
+# Mesonet (obs_expansion.md Sec. 7.2 item 3, 2026-10-14): T, q and wind assimilated, altimeter
+# evaluated only. Present only in observation sets built with MESONET != none (experiment.sh);
+# same cutoff as the other conventional types.
 &obs_kind_nml
    assimilate_these_obs_types = 'METAR_U_10_METER_WIND',
                                 'METAR_V_10_METER_WIND',
@@ -160,7 +163,11 @@
                                 'MARINE_SFC_V_WIND_COMPONENT',
                                 'MARINE_SFC_TEMPERATURE',
                                 'MARINE_SFC_ALTIMETER',
-   evaluate_these_obs_types   = '',
+                                'LAND_SFC_U_WIND_COMPONENT',
+                                'LAND_SFC_V_WIND_COMPONENT',
+                                'LAND_SFC_TEMPERATURE',
+                                'LAND_SFC_SPECIFIC_HUMIDITY',
+   evaluate_these_obs_types   = 'LAND_SFC_ALTIMETER',
    /
 
 # State (Q8). THM, not T (model_mod requires it for use_theta_m = 0). Quantities as in DART's

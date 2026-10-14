@@ -1,6 +1,7 @@
 """Select the public-MADIS mesonet reports for one analysis cycle (obs_expansion.md Sec. 7.2).
 
 Usage: select_mesonet_cycle.py <YYYYMMDDHHMM> <out_dir> [--option a|b1|c] [--calm keep|drop]
+                               [--metar-radius-km KM] [--grid-file WRFINPUT]
                                [--case-dir DIR] [--software-dir DIR]
 
 Writes into <out_dir>:
@@ -8,7 +9,9 @@ Writes into <out_dir>:
                      (variables it does not read are left out)
   selected.csv       one row per selected station: provider, ID, location, time, values, and which
                      variables are passed on to the converter (for per-provider statistics later)
-  selection.log      settings, list files (path, sha256, RRFSv2 commit) and counts
+  selection.log      settings, list files (path, sha256, RRFSv2 commit) and counts, including the
+                     obs per variable removed by rules 2b and 2c
+  dropped_feet.csv   the sites removed by rule 2c, with their elevation and the model terrain
 
 Selection, in order (decisions of 2026-10-13, list IDs as in notes/mesonet_station_selection.md):
  1. Records of the hourly MADIS mesonet files (${case_dir}/obs/madis/mesonet/YYYYMMDD_HH00.gz) inside
@@ -16,6 +19,23 @@ Selection, in order (decisions of 2026-10-13, list IDs as in notes/mesonet_stati
     analysis time t, (t - 450 s, t + 450 s].
  2. Stations whose ID is a METAR station in the METAR files of the same hours are dropped (the same
     report would enter twice).
+ 2b. Sites within --metar-radius-km (default 4 km) of a METAR report of the same window are dropped,
+    so METAR takes precedence (decided 2026-10-14). The METAR reports are those of the converted
+    hourly files (${case_dir}/obs/obs_seq_madis/metar/obs_seq.metar.YYYYMMDD_HH00, the hours t - 1 h
+    to t + 1 h, as make_cycle_obs.sh slices them) with times in the window. Reason:
+    wrf_dart_obs_preprocess adds the land-surface file before METAR and skips a METAR report whose
+    location is a "duplicate" (get_dist <= 1e-5 rad) of one already added, for all of its
+    variables, whatever the times. With DART built with r8 = r4 that test is float32 acos, which
+    returns 0 for most pairs within ~1.5 km and for some up to 3.7 km (obs_expansion.md Sec. 7.2), so
+    nearby mesonet sites would otherwise remove METAR reports.
+ 2c. Sites whose elevation is given in feet are dropped (decided 2026-10-14): inside the domain, the
+    station elevation z misfits the model terrain h (HGT of --grid-file, bilinear, as
+    wrf_dart_obs_preprocess's elevation check) by more than FEET_METRE_MISFIT as metres, but fits it
+    within FEET_FIT as feet (|z / 3.28084 - h|). At 00:15 on 05-20: 68 sites (59 APRSWXNET, 9 MesoWest),
+    most of which the 300-m elevation check would drop anyway; between 100 and 150 m misfit no site fits
+    as feet, so the two groups separate cleanly. Below ~100 m misfit feet and metres can't be told
+    apart. The elevation matters beyond the check: convert_madis_mesonet's q uses the station pressure
+    from the altimeter and the elevation (obs_expansion.md Sec. 7.2).
  3. Per variable, a report is accepted by the station/provider option:
       a   RRFS v2: T, q, altimeter from all providers; wind if the provider is in P1 or
           (provider, station) is in S2 (both in RRFSv2 parm/observers/msonet_uv288.yaml).
@@ -62,7 +82,11 @@ import numpy as np
 import yaml
 
 MIN_LAT, MAX_LAT, MIN_LON, MAX_LON = 30.36, 39.37, 262.52, 278.38   # convert_madis_hour.sh
+DART_EPOCH = dt.datetime(1601, 1, 1, tzinfo=dt.timezone.utc)
 HALF = 450                                                           # filter window half-width (s)
+FEET_METRE_MISFIT = 100.0                                            # m
+FEET_FIT = 60.0                                                      # m
+FT = 3.28084                                                         # feet per metre
 CALM = 0.01                                                          # m/s
 MISSING = -9999.0
 VALUES = ['temperature', 'dewpoint', 'altimeter', 'windDir', 'windSpeed']
@@ -80,6 +104,74 @@ def read_madis(path, names, char_names=()):
     out['_attrs'] = {n: {a: f[n].getncattr(a) for a in f[n].ncattrs()} for n in names}
     f.close()
     return out
+
+
+def metar_window_locations(case_dir, t):
+    """(lat, lon) in degrees of the METAR reports in the converted hourly obs_seq files with times in
+    (t - HALF, t + HALF]: the METAR reports wrf_dart_obs_preprocess sees in this cycle (before its
+    domain trim). Returns the arrays and the files read."""
+    lats, lons, files = [], [], []
+    for dh in (-1, 0, 1):
+        stamp = dt.datetime.fromtimestamp(t + dh * 3600, dt.timezone.utc).strftime('%Y%m%d_%H00')
+        path = os.path.join(case_dir, 'obs/obs_seq_madis/metar', 'obs_seq.metar.' + stamp)
+        if not os.path.exists(path):
+            continue
+        files.append(path)
+        lines = open(path).read().split('\n')
+        for j, line in enumerate(lines):
+            if line.strip() == 'loc3d':
+                lon, lat = (float(x) for x in lines[j + 1].split()[:2])
+                secs, days = (int(x) for x in lines[j + 4].split())
+                ts = (DART_EPOCH + dt.timedelta(days=days, seconds=secs)).timestamp()
+                if t - HALF < ts <= t + HALF:
+                    lats.append(np.degrees(lat))
+                    lons.append(np.degrees(lon))
+    return np.array(lats), np.array(lons), files
+
+
+def km_to_nearest(lat, lon, lat_ref, lon_ref):
+    """Great-circle distance (km, float64) from each (lat, lon) to the nearest reference point."""
+    if lat_ref.size == 0:
+        return np.full(lat.size, np.inf)
+    p1, p2 = np.radians(lat)[:, None], np.radians(lat_ref)[None, :]
+    dl = np.radians(lon % 360)[:, None] - np.radians(lon_ref % 360)[None, :]
+    h = np.sin((p2 - p1) / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+    return (2 * 6371.0 * np.arcsin(np.sqrt(h))).min(axis=1)
+
+
+def model_terrain(grid_file, lat, lon):
+    """Bilinear model terrain (m) at the points, and whether each is inside the mass grid. Lambert
+    conformal (MAP_PROJ = 1), WRF's llij_lc with WRF's earth radius; checked against XLAT/XLONG to
+    0.001 grid lengths on this domain."""
+    with nc.Dataset(grid_file) as g:
+        if int(g.getncattr('MAP_PROJ')) != 1:
+            sys.exit(f'select_mesonet_cycle.py: {grid_file} is not Lambert conformal')
+        a = {k: float(g.getncattr(k)) for k in ['TRUELAT1', 'TRUELAT2', 'STAND_LON', 'CEN_LAT', 'CEN_LON', 'DX']}
+        hgt = g['HGT'][0].astype(np.float64)
+    t1, t2 = np.radians(a['TRUELAT1']), np.radians(a['TRUELAT2'])
+    if abs(t1 - t2) < 1e-6:
+        cone = np.sin(t1)
+    else:
+        cone = np.log(np.cos(t1) / np.cos(t2)) / np.log(np.tan(np.pi / 4 + t2 / 2) / np.tan(np.pi / 4 + t1 / 2))
+    big_f = 6370000.0 * np.cos(t1) * np.tan(np.pi / 4 + t1 / 2) ** cone / cone
+
+    def xy(la, lo):
+        rho = big_f / np.tan(np.pi / 4 + np.radians(la) / 2) ** cone
+        th = cone * np.radians((lo - a['STAND_LON'] + 180) % 360 - 180)
+        return rho * np.sin(th), -rho * np.cos(th)
+
+    ny, nx = hgt.shape
+    x0, y0 = xy(a['CEN_LAT'], a['CEN_LON'])
+    x, y = xy(np.asarray(lat, np.float64), np.asarray(lon, np.float64))
+    i = (x - x0) / a['DX'] + (nx - 1) / 2
+    j = (y - y0) / a['DX'] + (ny - 1) / 2
+    inside = (i >= 0) & (i <= nx - 1) & (j >= 0) & (j <= ny - 1)
+    i0 = np.clip(np.floor(i).astype(int), 0, nx - 2)
+    j0 = np.clip(np.floor(j).astype(int), 0, ny - 2)
+    fi, fj = np.clip(i - i0, 0, 1), np.clip(j - j0, 0, 1)
+    h = (hgt[j0, i0] * (1 - fi) * (1 - fj) + hgt[j0, i0 + 1] * fi * (1 - fj)
+         + hgt[j0 + 1, i0] * (1 - fi) * fj + hgt[j0 + 1, i0 + 1] * fi * fj)
+    return h, inside
 
 
 def in_box(lat, lon):
@@ -147,6 +239,10 @@ def main():
     ap.add_argument('out_dir')
     ap.add_argument('--option', choices=['a', 'b1', 'c'], default='a')
     ap.add_argument('--calm', choices=['keep', 'drop'], default='keep')
+    ap.add_argument('--metar-radius-km', type=float, default=4.0,
+                    help='drop sites this close to a METAR report of the same window (default 4)')
+    ap.add_argument('--grid-file', default='/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/'
+                    'da_theta_m0/mean/wrfinput_d01_2025-05-20_00_00_00', help='wrfinput for the model terrain (rule 2c)')
     ap.add_argument('--case-dir', default='/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520')
     ap.add_argument('--software-dir', default='/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software')
     args = ap.parse_args()
@@ -164,7 +260,7 @@ def main():
         print(*a, file=log)
 
     say(f'select_mesonet_cycle.py {args.stamp}: option {args.option}, calm {args.calm}, '
-        f'window ({t - HALF}, {t + HALF}] s, hours {stamps}')
+        f'METAR radius {args.metar_radius_km} km, feet rule (misfit > {FEET_METRE_MISFIT:.0f} m as metres, < {FEET_FIT:.0f} m as feet, terrain {args.grid_file}), window ({t - HALF}, {t + HALF}] s, hours {stamps}')
     say(f'RRFSv2 {git_head(rrfsv2)}')
     for k, path in list_files.items():
         say(f'  {k}: {path} sha256 {sha256(path)}')
@@ -201,6 +297,18 @@ def main():
     say(f'  METAR stations in box {len(metar_ids)}; mesonet records dropped as METAR duplicates '
         f'{(~not_metar).sum()} ({len(set(r["stationId"][~not_metar]))} stations)')
 
+    # --- 2b. sites near a METAR report of the window -----------------------------------------
+    m_lat, m_lon, m_files = metar_window_locations(args.case_dir, t)
+    near_metar = km_to_nearest(r['latitude'], r['longitude'], m_lat, m_lon) < args.metar_radius_km
+    say(f'  METAR reports in window {m_lat.size} (from {", ".join(os.path.basename(f) for f in m_files)}); '
+        f'mesonet records within {args.metar_radius_km} km of one {(near_metar & not_metar).sum()} '
+        f'({len(set(r["stationId"][near_metar & not_metar]))} stations), dropped')
+
+    # --- 2c. elevation in feet ----------------------------------------------------------------
+    h_model, in_domain = model_terrain(args.grid_file, r['latitude'], r['longitude'])
+    z = r['elevation'].astype(np.float64)
+    feet = in_domain & (np.abs(z - h_model) > FEET_METRE_MISFIT) & (np.abs(z / FT - h_model) < FEET_FIT)
+
     # --- 3, 4. accepted and usable, per variable ---------------------------------------------
     def present(v):
         x = r[v]
@@ -227,21 +335,40 @@ def main():
         use_w &= ~calm
     use_alt = passed['altimeter'] & acc_alt
     use_q = passed['dewpoint'] & acc_q & use_t & passed['altimeter']
-    any_use = (use_t | use_q | use_w | use_alt) & not_metar
+    usable = (use_t | use_q | use_w | use_alt) & not_metar
+    any_use = usable & ~near_metar & ~feet
 
     # --- 5. one record per site, closest to t -------------------------------------------------
-    best = {}
     dt_abs = np.abs(r['observationTime'] - t)
     n_use = use_t.astype(int) + use_q + use_w + use_alt
     rank = lambda i: (dt_abs[i], -n_use[i], r['observationTime'][i])
-    for i in np.flatnonzero(any_use):
-        key = (round(float(r['latitude'][i]), 4), round(float(r['longitude'][i]), 4))
-        j = best.get(key)
-        if j is None or rank(i) < rank(j):
-            best[key] = i
-    sel = np.array(sorted(best.values()), dtype=int)
+
+    def one_per_site(mask):
+        best = {}
+        for i in np.flatnonzero(mask):
+            key = (round(float(r['latitude'][i]), 4), round(float(r['longitude'][i]), 4))
+            j = best.get(key)
+            if j is None or rank(i) < rank(j):
+                best[key] = i
+        return np.array(sorted(best.values()), dtype=int)
+
+    sel = one_per_site(any_use)
+    # What rules 2b and 2c removed, as the obs those sites would have given (same one-per-site choice;
+    # a site near a METAR with feet elevation counts under 2b).
+    for rule, mask in [('2b near METAR', usable & near_metar), ('2c feet', usable & ~near_metar & feet)]:
+        k = one_per_site(mask)
+        say(f'  removed by {rule}: sites {k.size}, obs T {use_t[k].sum()}, q {use_q[k].sum()}, '
+            f'wind {use_w[k].sum()} (u and v each), altimeter {use_alt[k].sum()}; by provider '
+            + ', '.join(f'{p} {c}' for p, c in collections.Counter(r['dataProvider'][k]).most_common()))
+    kf = one_per_site(usable & ~near_metar & feet)
+    with open(os.path.join(args.out_dir, 'dropped_feet.csv'), 'w', newline='') as fcsv:
+        w = csv.writer(fcsv)
+        w.writerow(['provider', 'station', 'lat', 'lon', 'elev_reported', 'elev_as_feet_m', 'model_terrain_m'])
+        for i in kf:
+            w.writerow([r['dataProvider'][i], r['stationId'][i], f"{r['latitude'][i]:.4f}", f"{r['longitude'][i]:.4f}",
+                        f'{z[i]:.1f}', f'{z[i] / FT:.1f}', f'{h_model[i]:.1f}'])
     ids_any = {(r['dataProvider'][i], r['stationId'][i]) for i in np.flatnonzero(any_use)}
-    say(f'  (provider, station) pairs with a usable report {len(ids_any)}, sites {len(best)}')
+    say(f'  (provider, station) pairs with a usable report {len(ids_any)}, sites {sel.size}')
     alt_out = use_alt | use_q          # altimeter written where usable, or kept for q
     say(f'  per variable (selected records): '
         f'T {use_t[sel].sum()}, q {use_q[sel].sum()}, wind {use_w[sel].sum()} '

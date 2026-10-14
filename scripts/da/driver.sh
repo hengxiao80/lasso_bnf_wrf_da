@@ -31,9 +31,15 @@ if [ "${first}" != "${FIRST_CYCLE}" ]; then
    grep -qx complete "${OUTPUT_DIR}/${prev}/status" 2> /dev/null || die "cycle ${prev} not complete"
 fi
 
-# One HYDROSTATIC_PH, INF_DAMPING and INF_FLAVOR per run: a resume with other values would mix them in one run.
+# One HYDROSTATIC_PH, INF_DAMPING, INF_FLAVOR and observation set per run: a resume with other values
+# would mix them in one run. The observation set (OBS_NAME) is recorded only when it isn't the step 13 obs/,
+# so the step 13 runs keep their settings line.
 mkdir -p "${OUTPUT_DIR}"
 settings="hydrostatic_ph=${HYDROSTATIC_PH} inf_damping=${INF_DAMPING} inf_flavor=${INF_FLAVOR}"
+if [ -n "${OBS_NAME}" ]; then
+   [ -s "${OBS_DIR}/obs_settings.txt" ] || die "no ${OBS_DIR}/obs_settings.txt (make_cycle_obs.sh)"
+   settings="${settings} obs=obs${OBS_NAME} $(cat "${OBS_DIR}/obs_settings.txt")"
+fi
 if [ -f "${OUTPUT_DIR}/settings.txt" ]; then
    grep -qx "${settings}" "${OUTPUT_DIR}/settings.txt" \
       || die "${OUTPUT_DIR} was run with $(cat "${OUTPUT_DIR}/settings.txt"), not ${settings}"
@@ -41,7 +47,7 @@ else
    echo "${settings}" > "${OUTPUT_DIR}/settings.txt"
 fi
 
-log "driver: run '${RUN_NAME}' (${RUN_DIR}), ${#times[@]} cycles ${first} -> ${last}, ${NUM_ENS} members, hydrostatic_ph=${HYDROSTATIC_PH}, inf_damping=${INF_DAMPING}, inf_flavor=${INF_FLAVOR}"
+log "driver: run '${RUN_NAME}' (${RUN_DIR}), ${#times[@]} cycles ${first} -> ${last}, ${NUM_ENS} members, hydrostatic_ph=${HYDROSTATIC_PH}, inf_damping=${INF_DAMPING}, inf_flavor=${INF_FLAVOR}, obs ${OBS_DIR}"
 for t in "${times[@]}"; do
    mkdir -p "${OUTPUT_DIR}/${t}"
    log "driver: cycle ${t}"

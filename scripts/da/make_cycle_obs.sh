@@ -1,10 +1,10 @@
 #!/bin/bash
 # Build one cycle's obs_seq.out from the hourly converted MADIS files (pilot step 10).
 #
-# Usage: make_cycle_obs.sh <YYYYMMDDHHMM> [out_root]
+# Usage: [OBS_NAME=_x] [MESONET=a_calmkeep] make_cycle_obs.sh <YYYYMMDDHHMM> [out_root]
 #
 # <YYYYMMDDHHMM> is the analysis time t. Output in <out_root>/<YYYYMMDDHHMM>/ (default
-# ${EXP_DIR}/obs): obs_seq.out, counts.window (per type after the time slice, per family) and
+# ${OBS_DIR} = ${EXP_DIR}/obs${OBS_NAME}): obs_seq.out, counts.window (per type after the time slice, per family) and
 # counts.out (per type after screening), plus the logs of every program run.
 #
 # 1. Time slice. For each family, obs_sequence_tool merges the hourly files of the hours around t
@@ -13,6 +13,10 @@
 #    assimilation_period_seconds = 900 (obs_model_mod: start = t - 450 s + 1 s, end = t + 450 s,
 #    both inclusive), so each report goes to exactly one cycle. A family with nothing in the
 #    window gets no file.
+#    Mesonet (MESONET != none, experiment.sh): make_cycle_mesonet.sh builds the cycle's
+#    obs_seq.land_sfc (its selection already applies the same window) and it joins the others.
+#    The set's contents are recorded in <out_root>/obs_settings.txt; a set built with other
+#    settings, or one without that file (obs/ of step 13), is not written into.
 # 2. Screening. wrf_dart_obs_preprocess with ${CONFIG_DIR}/input.nml.obs_preprocess reads the
 #    per-family slices as its "extra" files and trims to the domain minus the boundary zone,
 #    checks surface elevation against the model terrain, applies the pressure/height top and
@@ -22,8 +26,9 @@
 set -eu
 
 stamp=$1
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
-out_root=${2:-${EXP_DIR}/obs}
+out_root=${2:-${OBS_DIR}}
 DART_WRF_WORK=${SOFTWARE_DIR}/DART/models/wrf/work
 CONV_DIR=${CASE_DIR}/obs/obs_seq_madis
 GRID_FILE=${MEAN_DIR}/wrfinput_d01_2025-05-20_00_00_00
@@ -38,6 +43,17 @@ dart_time() {   # epoch seconds -> "days seconds"
 read -r t_day t_sec <<< "$(dart_time ${t_epoch})"
 read -r first_day first_sec <<< "$(dart_time $(( t_epoch - HALF + 1 )))"
 read -r last_day last_sec <<< "$(dart_time $(( t_epoch + HALF )))"
+
+obs_settings="mesonet=${MESONET}"
+if [ -f "${out_root}/obs_settings.txt" ]; then
+   grep -qx "${obs_settings}" "${out_root}/obs_settings.txt" || {
+      echo "make_cycle_obs.sh: ${out_root} holds $(cat "${out_root}/obs_settings.txt"), not ${obs_settings}" >&2; exit 1; }
+elif [ -d "${out_root}" ] && [ -n "$(find "${out_root}" -mindepth 1 -maxdepth 1)" ]; then
+   echo "make_cycle_obs.sh: ${out_root} has no obs_settings.txt (an older set); use another OBS_NAME" >&2; exit 1
+else
+   mkdir -p "${out_root}"
+   echo "${obs_settings}" > "${out_root}/obs_settings.txt"
+fi
 
 out=${out_root}/${stamp}
 rm -rf "${out}"
@@ -86,6 +102,16 @@ EOF
       echo "make_cycle_obs.sh: obs_sequence_tool failed for ${family} ${stamp}, see ${log}" >&2; exit 1
    fi
 done
+
+# Mesonet: one per-cycle file, already selected for the window.
+if [ "${MESONET}" != none ]; then
+   "${SCRIPT_DIR}/make_cycle_mesonet.sh" "${stamp}" "${MESONET%%_calm*}" "${MESONET##*_calm}" \
+      > "${out}/mesonet.log" 2>&1 || {
+      echo "make_cycle_obs.sh: make_cycle_mesonet.sh failed for ${stamp}, see ${out}/mesonet.log" >&2; exit 1; }
+   meso=${CASE_DIR}/obs/obs_seq_mesonet/${MESONET}/${stamp}
+   cp "${meso}/obs_seq.land_sfc" "${out}/prep/obs_seq.land_sfc"
+   awk '{print "mesonet", $1, $2}' "${meso}/counts" >> "${out}/counts.window"
+fi
 
 # --- 2. screening ------------------------------------------------------------------------
 cd "${out}/prep"
