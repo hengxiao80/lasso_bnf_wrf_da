@@ -34,5 +34,8 @@ cases/*/da_*/slurm.*.out
 !cases/*/iotest/submit_chain*.sh
 !cases/*/iotest/*/namelist.input
 !cases/*/iotest/*/slurm.wrf
+# DART model_mod_check run (namelist and job script only; logs and output stay out)
+!cases/*/dart/mmc/input.nml
+!cases/*/dart/mmc/run_mmc.sh
 # figures
 !cases/*/figures/*.png

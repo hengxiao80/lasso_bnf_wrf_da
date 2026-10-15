@@ -41,3 +41,37 @@ location (or copy the 78 GB into this project first).
 - `wps/namelist.wps`: sey's `metgrid-revk/namelist.wps`, d01 only, dates 05-19_00 -> 05-22_00.
 - Level reversal of met_em files: our own `scripts/reverse_metgridlevs.py`; verified
   bit-identical to sey's `reverse_metgridlevs.py` output on two files.
+
+## Observations downloaded into this case (`obs/`, untracked)
+
+Added 2026-10-15. All public, no account. Sizes are `du -sh` on 2026-10-15. Details and
+the searches behind each choice: `notes/wrf_dart_tutorial_adaptation.md` 2.13 (MADIS,
+GDAS, GOES) and `notes/obs_expansion.md` (mesonet Sec. 7, MRMS Sec. 8).
+
+| What | Where here | Source | Downloaded | Used by |
+|---|---|---|---|---|
+| Public MADIS hourly point files: `acars`, `marine`, `mesonet`, `metar` (72 each), `raob` (53, launch hours only), 05-19 00Z – 05-21 23Z, `YYYYMMDD_HH00.gz` | `obs/madis/<family>/` (2.3 GB, 2.1 GB of it mesonet) | `https://madis-data.ncep.noaa.gov/madisPublic1/data/archive/` (public archive; the research archive needs credentials) | 2026-09-25 (all pass `gzip -t`) | `scripts/da/convert_madis_hour.sh`, `scripts/da/make_cycle_mesonet.sh` |
+| MADIS single-hour test files (05-20 12/18Z; includes `profiler`) | `obs/madis_test/` (109 MB) | same | 2026-09-25 | first converter tests only |
+| MRMS `MergedReflectivityQC`, 33 levels × 4 times (00:14:38, 00:30:40, 00:44:42, 01:00:38 on 05-20), GRIB2 | `obs/mrms/20250520/` (131 MB) | AWS `https://noaa-mrms-pds.s3.amazonaws.com/CONUS/MergedReflectivityQC_XX.XX/YYYYMMDD/` | 2026-10-14 | `scripts/da/download_mrms.sh` (HRRRDAS minute rule), `scripts/da/mrms_to_obs_seq.py` |
+| GDAS PREPBUFR, 6-hourly, 05-19 00Z – 05-22 00Z (13 times each): `prepnr/prepbufr.gdas.YYYYMMDDHH.nr`, `prep48h/prepbufr.gdas.YYYYMMDD.tHHz.nr.48h` (+ `test*` dirs) | `obs/gdas_prepbufr/` (2.0 GB) | NCAR GDEX `d337000` via OSDF, `https://osdf-director.osg-htc.org/ncar/gdex/d337000/{prepnr,prep48h}/2025/` | 2026-09-25 | not used yet (fallback for conventional obs; source for VAD winds and GPS PW) |
+| GOES-19 ABI L2 derived motion winds, CONUS, one scan (05-20 12:01Z, channels 2, 7, 8, 9, 10, 14) | `obs/goes_dmw_test/` (1 MB) | AWS `noaa-goes19/ABI-L2-DMWC/YYYY/DDD/HH/` | 2026-09-25 | reader test only (no converter yet) |
+
+Not downloaded: the 05-22 00Z MADIS METAR/marine files (reports from 05-21 23:45; needed
+only if cycling runs past 05-21 23:30), NEXRAD Level II (planned source for radial
+velocity: AWS `unidata-nexrad-level2`).
+
+Derived observation files (`obs/obs_seq_*`, `da_theta_m0/obs*/`) are made from these by
+the scripts above and can be rebuilt.
+
+## Reference code and fixed files outside this repo (`../software/`, read-only use)
+
+| What | Where | Used by |
+|---|---|---|
+| RRFS v2 mesonet lists: `parm/observers/msonet_uv288.yaml` (P1, S2), `fix/jedi/current_mesonet_uselist.yaml` (S1), `fix/jedi/mesonet_trusted_provider.yaml` (P5) | `../software/RRFSv2` (NOAA-EMC/rrfs-workflow `rrfs-mpas-jedi` `08eee4ce`) | `scripts/da/select_mesonet_cycle.py` (records path, sha256 and commit in each cycle's `selection.log`) |
+| NCEP error tables and convinfo (RAP, NAM, RRFS) | `../software/GSI-fix_subset` (NOAA-EMC/GSI-fix `0ba656b6`, single files) | the METAR and mesonet error patches (`patches/`) |
+| HRRR / HRRRDAS code (MRMS program, HRRRDAS settings) | `../software/HRRR` (NOAA-EMC/HRRR `40ee6058`) | ported in `scripts/da/mrms_to_obs_seq.py` |
+| WRFDA CV3 background errors `be.dat.cv3` | `../software/WRFDA/var/run/` | perturbation bank (`scripts/da/run_wrfda_draw.sh`) |
+| DART sampling-error-correction table | `../software/DART/assimilation_code/programs/gen_sampling_err_table/work/sampling_error_correction_table.nc` | filter (`SEC_TABLE` in `da_theta_m0/config/experiment.sh`) |
+
+Other reference clones (`GSI`, `RRFSv1`, `pyOPAWS`) are cited in
+`notes/mesonet_station_selection.md` Sec. 1 and `notes/obs_expansion.md` Sec. 4.

@@ -56,7 +56,10 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   Design and open items: `notes/obs_expansion.md` Sec. 8.4–8.5.
   **WRF is patched** so `REFL_10CM` is in `wrfrst` (`patches/wrf_06d4240a_refl_10cm_restart.patch`, rebuilt and tested
   2026-10-14; old executables kept as `main/*.exe.pre_refl_restart`). Restart files written before then lack `REFL_10CM`.
-- Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta
+- `model_mod_check`: interpolation test only (`test1thru = 0`) run 2026-09-22 in `cases/20250520/dart/mmc/`
+  ("Finished successfully"; its `input.nml` is the ancestor of `input.nml.filter`); the fuller tests
+  (`test1thru` > 0) deferred by the user.
+- Not started: moist/dry theta
   conversion, and the NCEP/prepbufr conventional-observation
   pipeline (DART's `prepbufr`/`create_real_obs` converters, `&prep_bufr_nml`/`&ncepobs_nml`) —
   already called for in `initial_plan_from_codex/` Phase 2 Steps 2E-2H to bring in the
