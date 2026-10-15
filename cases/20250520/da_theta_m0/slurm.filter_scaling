@@ -1,0 +1,162 @@
+#!/bin/bash
+# Filter scaling test (obs_expansion.md Sec. 9, "Speeding up filter"): one saved analysis replayed
+# with filter on several MPI layouts and location-box settings, without WRF. Everything happens in
+# tests/filter_scaling/<case>/<config>/; the source run's files are only read.
+#
+# Cases (SCALE_CASE):
+#   conv  (default) the conventional pass of step 13's _hph run at 00:30 (3,492 obs): its priors
+#         (output_hph/<t>/memNNN/prior_d01.nc), its input.nml, obs_seq.out and input inflation.
+#         Reference: that run's analyses (output_hph/<t>/memNNN/analysis_d01.nc, 8 x 16 ranks), so
+#         the 8x16 config also checks that the replay is exact.
+#   mrms  the MRMS pass (config/input.nml.filter_mrms, as MRMS_INFLATION=pass1: no inflation) on a
+#         new run's priors, which have REFL_10CM (e.g. run 1, output_madis), with
+#         obs_madis_mrms/<t>/obs_seq.mrms (~85,000 obs). Reference: the first config's analyses.
+#         Runs on the priors, not on pass 1's analyses: same obs and same work per ob, so the
+#         timing is representative; the QC outcomes can differ slightly from a real pass 2.
+# Configs (SCALE_CONFIGS, space-separated): <nodes>x<ranks per node>[:<nlon>x<nlat>], e.g. 40x32 or
+#   8x16:283x144 (&location_nml search boxes, default 71x36; nlon must be odd). Each needs
+#   <nodes> <= the job's nodes. Each config gets fresh copies of the 5 priors (~4.5 GB).
+#
+#   sbatch slurm.filter_scaling                                          (conv, 40 nodes)
+#   SCALE_CONFIGS="8x16 8x32 8x64" sbatch -N 8 slurm.filter_scaling      (ranks per node only, 8 nodes)
+#   SCALE_CASE=mrms SCALE_SRC=output_madis SCALE_T=202505200015 \
+#     SCALE_CONFIGS="40x16 40x16:283x144 40x32 40x32:283x144" sbatch slurm.filter_scaling
+#
+# Same UCX settings as slurm.cycle, where filter runs in the cycle. Afterwards, per config: wall,
+# filter.log phases (read / H(x) / assimilation / rest), obs, ms per ob; the analyses against the
+# reference; sacct (Elapsed, MaxRSS per filter step, in config order).
+#SBATCH --job-name=fscale520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=40
+#SBATCH --ntasks-per-node=128
+#SBATCH --cpus-per-task=1
+#SBATCH --output=slurm.filter_scaling.%j.out
+#SBATCH --exclusive
+
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+NMEM=5
+
+CASE=${SCALE_CASE:-conv}
+case ${CASE} in
+conv)
+   SRC=${EXP_DIR}/${SCALE_SRC:-output_hph}
+   T=${SCALE_T:-202505200030}
+   CONFIGS=${SCALE_CONFIGS:-8x16 40x16 40x32}
+   NML=${SRC}/${T}/filter/input.nml
+   OBS=$(cat ${SRC}/${T}/filter/obs_seq.out.path) ;;
+mrms)
+   SRC=${EXP_DIR}/${SCALE_SRC:?SCALE_SRC (output dir of a run with REFL_10CM) required for mrms}
+   T=${SCALE_T:-202505200015}
+   CONFIGS=${SCALE_CONFIGS:-40x16 40x16:283x144 40x32 40x32:283x144}
+   NML=${CONFIG_DIR}/input.nml.filter_mrms
+   OBS=${SCALE_OBS:-${EXP_DIR}/obs_madis_mrms/${T}/obs_seq.mrms} ;;
+*) echo "SCALE_CASE=${CASE}: conv or mrms"; exit 1 ;;
+esac
+G=${EXP_DIR}/tests/filter_scaling/${CASE}_${T}
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+ulimit -s unlimited
+set -e
+
+echo "case ${CASE}, source ${SRC} at ${T}, obs ${OBS}, namelist ${NML}, configs: ${CONFIGS}"
+[ -s "${OBS}" ] && [ -s "${NML}" ] || { echo "missing ${OBS} or ${NML}"; exit 1; }
+for m in $(seq -f %03g 1 ${NMEM}); do
+   [ -s ${SRC}/${T}/mem${m}/prior_d01.nc ] || { echo "no ${SRC}/${T}/mem${m}/prior_d01.nc"; exit 1; }
+done
+if [ ${CASE} = mrms ]; then
+   ncdump -h ${SRC}/${T}/mem001/prior_d01.nc | grep -q ' REFL_10CM(' \
+      || { echo "${SRC} priors have no REFL_10CM"; exit 1; }
+fi
+for c in ${CONFIGS}; do   # check all configs before running any
+   n=${c%%x*}
+   [[ ${c} =~ ^[0-9]+x[0-9]+(:[0-9]+x[0-9]+)?$ ]] || { echo "bad config ${c}"; exit 1; }
+   [ ${n} -le ${SLURM_NNODES} ] || { echo "config ${c}: ${n} nodes > ${SLURM_NNODES}"; exit 1; }
+   if [[ ${c} == *:* ]]; then
+      nlon=${c#*:}; nlon=${nlon%x*}
+      [ $((nlon % 2)) = 1 ] || { echo "config ${c}: nlon must be odd"; exit 1; }
+   fi
+done
+rm -rf ${G}
+mkdir -p ${G}
+
+refs=()
+for c in ${CONFIGS}; do
+   d=${G}/${c/:/_}
+   mkdir -p ${d}
+   layout=${c%%:*}; nodes=${layout%x*}; tpn=${layout#*x}
+   # input.nml: tasks_per_node, and the search boxes if given
+   sed "s/tasks_per_node = 16\$/tasks_per_node = ${tpn}/" ${NML} > ${d}/input.nml
+   grep -q "tasks_per_node = ${tpn}\$" ${d}/input.nml || { echo "tasks_per_node not set"; exit 1; }
+   if [[ ${c} == *:* ]]; then
+      boxes=${c#*:}
+      sed -i -e "s/^\(   nlon *= *\)[0-9]*,/\1${boxes%x*},/" -e "s/^\(   nlat *= *\)[0-9]*,/\1${boxes#*x},/" ${d}/input.nml
+      grep -q "^   nlon *= *${boxes%x*}," ${d}/input.nml && grep -q "^   nlat *= *${boxes#*x}," ${d}/input.nml \
+         || { echo "nlon/nlat not set"; exit 1; }
+   fi
+   ln -s ${GRID_FILE} ${d}/wrfinput_d01
+   ln -s ${SEC_TABLE} ${d}/sampling_error_correction_table.nc
+   ln -s ${OBS} ${d}/obs_seq.out
+   if [ ${CASE} = conv ]; then
+      cp ${SRC}/${T}/filter/input_priorinf_{mean,sd}.nc ${d}/
+   fi
+   : > ${d}/input_list_d01.txt
+   for m in $(seq -f %03g 1 ${NMEM}); do
+      mkdir -p ${d}/mem${m}
+      cp ${SRC}/${T}/mem${m}/prior_d01.nc ${d}/mem${m}/dart_d01.nc
+      echo ${d}/mem${m}/dart_d01.nc >> ${d}/input_list_d01.txt
+   done
+   cp ${d}/input_list_d01.txt ${d}/output_list_d01.txt
+
+   echo "=== ${c}: filter on ${nodes} nodes x ${tpn} ranks"
+   date
+   cd ${d}
+   SECONDS=0
+   srun -N ${nodes} -n $((nodes * tpn)) --ntasks-per-node=${tpn} -c 1 --exact ${DART_WORK}/filter \
+      > filter.log 2>&1 || { echo "filter failed for ${c}, see ${d}/filter.log"; tail -30 filter.log; exit 1; }
+   grep -q 'Finished \.\.\. at' filter.log || { echo "filter did not finish for ${c}"; exit 1; }
+   echo "${c}: ${SECONDS} s"
+   echo ${SECONDS} > wall_s.txt
+
+   # analyses against the reference
+   new=$(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${d}/mem${m}/dart_d01.nc; done)
+   if [ ${CASE} = conv ]; then
+      ref=$(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${SRC}/${T}/mem${m}/analysis_d01.nc; done)
+   elif [ ${#refs[@]} -eq 0 ]; then
+      refs=(${new}); ref=
+   else
+      ref=${refs[0]}
+   fi
+   if [ -n "${ref}" ]; then
+      echo "analyses vs reference:"
+      ${PY} ${DA}/compare_dart_members.py ${ref%,} ${new%,}
+   else
+      echo "reference for the following configs"
+   fi
+done
+
+# --- summary --------------------------------------------------------------------------------
+echo
+echo "=== summary (${CASE} at ${T}), seconds"
+printf '%-18s %6s %5s %5s %6s %7s %6s %5s\n' config wall read 'H(x)' assim nobs ms/ob rest
+for c in ${CONFIGS}; do
+   d=${G}/${c/:/_}
+   ${PY} - ${d} ${c} <<'EOF'
+import sys
+sys.path.insert(0, '/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da')
+from summarize_cycle_timing import filter_phases
+d, c = sys.argv[1], sys.argv[2]
+p = filter_phases(f'{d}/filter.log')
+wall = open(f'{d}/wall_s.txt').read().strip()
+ms = f'{1000 * p["assim"] / p["nobs"]:.2f}' if p['nobs'] else '-'
+print(f'{c:<18} {wall:>6} {p["read"]:5.0f} {p["hx"]:5.0f} {p["assim"]:6.0f} {p["nobs"] or "-":>7} {ms:>6} {p["rest"]:5.0f}')
+EOF
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%24,Elapsed,NNodes,NTasks,MaxRSS,State

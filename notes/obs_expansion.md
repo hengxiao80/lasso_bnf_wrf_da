@@ -408,3 +408,59 @@ Run 2: the user first asked for calm winds dropped, then (2026-10-15) kept them 
 uses the built `obs_meso_a_calmkeep/` (Sec. 7). Run 1 is also the first test of the new
 pass-1 namelist (QCLOUD updated, hydrometeors and `REFL_10CM` in the state). At the first MRMS cycle (run 3): filter
 wall time and memory, and the DART QC-7 (outlier) counts of the radar types (hand-off part 6, outlier check).
+
+**Timing of runs 1–4 (user, 2026-10-15: WRF should cost the same; record how the filter cost changes).** After each
+run: `.venv/bin/python scripts/da/summarize_cycle_timing.py output<RUN_NAME> --slurm-out slurm.cycle.<job>.out`
+(per cycle and pass: filter wall, its read / H(x) / assimilation phases from `filter.log`, obs count and ms per ob,
+post_filter update, WRF advance, total; filter steps' Elapsed and MaxRSS from the sacct table). Results go in the
+table below.
+
+Baseline, step 13 `_hph` (job 1047842, MADIS with DART's METAR errors, 5 members, filter on 8 nodes × 16 ranks), s:
+
+| cycle | filter | read | H(x) | assim | obs | ms/ob | update | advance | total |
+|---|---|---|---|---|---|---|---|---|---|
+| 00:00 (cold start) | – | | | | | | – | 133 | 135 |
+| 00:15 | 99 | 2 | 4 | 79 | 2,781 | 28.4 | 114 | 135 | 433 |
+| 00:30 | 114 | 2 | 3 | 96 | 3,492 | 27.5 | 114 | 123 | 433 |
+| 00:45 | 106 | 2 | 3 | 87 | 3,058 | 28.4 | 132 | 130 | 450 |
+| 01:00 | 161 | 2 | 4 | 142 | 4,851 | 29.3 | 119 | 133 | 494 |
+
+Filter MaxRSS 1.70 GB per task in every cycle. The filter is almost all the serial observation loop, ~28 ms per ob
+at the conventional cutoff (0.0235 rad, zero at ~300 km). **Wall-time risk for runs 3 and 4:** MRMS adds ~85,000–89,000
+obs per cycle (Sec. 8.4); at 28 ms/ob that would be ~40 min per cycle, ~2.7 h for the hour, over `slurm.cycle`'s
+2-h limit. The radar cutoff is ~17× smaller (18 km), so the cost per ob should be far lower, but DART's loop also has
+a fixed per-ob cost (broadcast of the ob's prior, close-state search) that the step-13 numbers can't separate. Before
+run 3: raise the time limit for that submission (e.g. `sbatch --time=06:00:00`), and check the 00:15 MRMS pass's
+ms/ob as soon as it finishes.
+
+| run | cycle | pass | filter | read | H(x) | assim | obs | ms/ob | MaxRSS | update | advance | total |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| (filled in after each run) | | | | | | | | | | | | |
+
+**Speeding up filter (looked up 2026-10-15; DART is v11.25.3, `7bbd35a09`).** The EAKF loop over observations is
+serial; each observation's update is spread over the MPI ranks (state distributed; Anderson and Collins 2007). No
+OpenMP in the update. Levers, none tested yet:
+- **More ranks.** Filter runs on 8 nodes × 16 ranks (`FILTER_NODES`, `FILTER_TASKS_PER_NODE`; `-c 1`), 16 of 128 cores
+  per node, while the other 32 nodes of the 40-node job wait. Nodes: 128 cores, ~256 GB; filter 1.7 GB per rank. Helps
+  most where the per-ob work is large (conventional, ~300-km cutoff); the radar pass (18 km) is probably limited by the
+  per-ob communication instead. Results across rank counts need not be bit-identical: pick one layout for runs 1–4.
+- **`&location_nml` `nlon`/`nlat` (search boxes).** The docs: defaults are usually sufficient; for large models "the
+  assimilation may run faster by doubling these values or multiplying them by 4" (more memory, shorter linear part of
+  the search). Boxes cover only the regional grid: 71 × 36 over our domain is ~19 × 27 km, so with the radar pass's
+  search distance (2 × cutoff = 18 km) each search scans ~3 × 3 boxes of state; ×4 would cut that for the radar pass.
+  Changes only the search, not the results. `nlon` must be odd.
+- **Settings already right:** `convert_all_{state,obs}_verticals_first = .true.`, `distribute_mean = .false.` (faster,
+  more memory), `sort_obs_inc = .false.` (expensive, unneeded for EAKF), `approximate_distance = .false.` (docs: keep
+  false for regional models). `close_obs_caching` (default true) is switched off by DART itself when special cutoffs
+  are used (`assim_tools_mod.f90:290`), i.e. in `input.nml.filter_joint`: results correct, a little caching lost.
+- **Less work (changes results):** coarser MRMS thinning / superobs (clear air especially), smaller conventional cutoff.
+
+**Scaling test, written 2026-10-15 (not run: 40 nodes not available).** `cases/20250520/da_theta_m0/slurm.filter_scaling`
+replays one saved analysis with filter only, on configs `<nodes>x<ranks per node>[:<nlon>x<nlat>]` (`SCALE_CONFIGS`),
+in `tests/filter_scaling/<case>_<t>/<config>/`; per config: wall, `filter.log` phases, obs, ms/ob, analyses compared
+with `scripts/da/compare_dart_members.py`, sacct MaxRSS. Cases: `conv` (default): step 13 `_hph` at 00:30, its priors,
+`input.nml`, obs and input inflation; reference = that run's analyses, so 8x16 also checks the replay is exact;
+default configs 8x16, 40x16, 40x32. `mrms`: `config/input.nml.filter_mrms` (no inflation) on a new run's priors
+(`SCALE_SRC`, e.g. run 1's `output_madis`, which has `REFL_10CM`) with `obs_madis_mrms/<t>/obs_seq.mrms`; reference =
+the first config; default configs 40x16, 40x16:283x144, 40x32, 40x32:283x144. Smaller variant without 40 free nodes:
+`SCALE_CONFIGS="8x16 8x32 8x64" sbatch -N 8 slurm.filter_scaling` (ranks per node only).
