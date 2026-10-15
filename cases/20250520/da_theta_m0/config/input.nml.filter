@@ -186,7 +186,11 @@
 #     prior REFL_10CM, its H(x), as HRRRDAS's radar pass uses the background's); listed so that
 #     both passes have the same state and their inflation files can be passed between them
 #     (MRMS_INFLATION = both). REFL_10CM needs restarts from the patched wrf.exe.
-#   The MRMS pass's list is in input.nml.filter_mrms; the variable lists must stay the same.
+#   Pass 1 (input.nml.filter) and pass 2 (input.nml.filter_mrms) list the same variables; only the
+#     UPDATE/NO_COPY_BACK flags differ. Strictly needed only with MRMS_INFLATION = both: the adaptive
+#     inflation files hold one field per state variable, and pass 2 reads pass 1's. With pass1 it is
+#     not needed (pass 2 doesn't inflate), but the lists are kept the same anyway (user, 2026-10-15),
+#     so that the inflation choice stays open and every run has the same pass 1.
 # vert_localization_coord = 4: scale height.
 &model_nml
    default_state_variables = .false.,

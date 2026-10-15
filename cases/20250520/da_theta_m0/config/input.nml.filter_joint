@@ -209,20 +209,16 @@
 # State (Q8). THM, not T (model_mod requires it for use_theta_m = 0). Quantities as in DART's
 # wrf_state_variables_table (Q2 is a mixing ratio; model_mod converts it to specific humidity for
 # the METAR humidity operator).
-#   U V THM QVAPOR PH MU: UPDATE. PH is always required; MU lets surface-pressure observations
-#     change the column mass. Whether PH is replaced by the hydrostatic increment
-#     (wrfrst_dart.py insert --hydrostatic-ph) is decided from the first real analysis (step 13).
-#   W: NO_COPY_BACK in the pilot, for its increments only; it changes no other variable's update
-#     (no operator reads it). May be dropped from the list in the 50-member cycling.
-#   T2 Q2 U10 V10 PSFC: NO_COPY_BACK, needed by the surface operators (WRF rediagnoses them).
-#   QCLOUD: UPDATE, as in HRRRDAS's conventional pass (U V T QVAPOR QCLOUD; Dowell 2020), added
-#     2026-10-14 for the two-pass work (obs_expansion.md Sec. 8.4); in one-pass runs too, so that
-#     a run with and one without MRMS have the same conventional pass.
-#   QRAIN QSNOW QGRAUP REFL_10CM: NO_COPY_BACK here (not written back, so the MRMS pass reads the
-#     prior REFL_10CM, its H(x), as HRRRDAS's radar pass uses the background's); listed so that
-#     both passes have the same state and their inflation files can be passed between them
-#     (MRMS_INFLATION = both). REFL_10CM needs restarts from the patched wrf.exe.
-#   The MRMS pass's list is in input.nml.filter_mrms; the variable lists must stay the same.
+#   U V THM QVAPOR PH MU QCLOUD: UPDATE, as in pass 1 (input.nml.filter).
+#   QRAIN QSNOW QGRAUP: UPDATE, as in pass 2 (input.nml.filter_mrms).
+#   W, T2 Q2 U10 V10 PSFC: NO_COPY_BACK, as in pass 1 (T2 Q2 U10 V10 PSFC for the surface operators;
+#     WRF rediagnoses them).
+#   REFL_10CM: NO_COPY_BACK; the radar H(x) is the background's, as in HRRRDAS. Needs restarts from
+#     the patched wrf.exe.
+#   Same variables as the two-pass files (input.nml.filter, input.nml.filter_mrms), kept so by choice
+#     (user, 2026-10-15): the two passes need the same list only with MRMS_INFLATION = both (the
+#     inflation files hold one field per state variable), and keeping it in one-pass runs too makes
+#     them differ from two-pass runs only by the filter design.
 # vert_localization_coord = 4: scale height.
 &model_nml
    default_state_variables = .false.,

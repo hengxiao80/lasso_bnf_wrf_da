@@ -368,3 +368,20 @@ Raised by the user as candidates to try, alongside `MRMS_INFLATION` (pass1 | bot
   `inf_sd_max_change` (1.05) times the old sd is skipped (the old sd kept), not clipped, and this is per observation.
   No value chosen yet (DART's guide: smaller bounds make the inflation vary more slowly; it recommends 0.6 / 0.6 for
   large models). DART's guide also recommends `inf_lower_bound = 0` for flavor 5 (deflation allowed); ours stays 1.0.
+
+## Same state-variable list in both MRMS passes, even with `MRMS_INFLATION = pass1` — 2026-10-15
+
+Follows the two-pass entry (2026-10-14) and `notes/obs_expansion.md` Sec. 8.4.
+
+- `input.nml.filter`, `input.nml.filter_mrms` and `input.nml.filter_joint` list the same 17 variables; only the
+  `UPDATE`/`NO_COPY_BACK` flags differ (pass 1: PH, MU `UPDATE`, QRAIN QSNOW QGRAUP `NO_COPY_BACK`; pass 2 the
+  reverse; joint: all of them `UPDATE`).
+- The identical list is **required only with `MRMS_INFLATION = both`**: DART's adaptive inflation files hold one
+  field per state variable, and pass 2 reads and updates pass 1's. With `pass1`, pass 2 doesn't inflate and could
+  list other variables (each pass reads only its listed fields from the same member files and writes back only its
+  `UPDATE` ones).
+- **Decided (user, 2026-10-15): keep the lists the same anyway**, also with `pass1` and in one-pass runs, so the
+  inflation choice stays open and every run's conventional pass is the same.
+- Comments made precise in all three files. The `&model_nml` comment blocks of `input.nml.filter_mrms` and
+  `input.nml.filter_joint` had been copied unchanged from pass 1 and gave pass 1's flags; rewritten to give each file's
+  own (the namelist values themselves were right).

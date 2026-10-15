@@ -313,7 +313,8 @@ inflation in the second pass (user researching); `outlier_threshold` for radar o
   Pass 1 (`input.nml.filter`): QCLOUD `UPDATE`; QRAIN, QSNOW, QGRAUP, `REFL_10CM` `NO_COPY_BACK`. Pass 2
   (`input.nml.filter_mrms`, same variables): U V THM QVAPOR QCLOUD QRAIN QSNOW QGRAUP `UPDATE`; PH, MU, W, `REFL_10CM`
   `NO_COPY_BACK`. As in HRRRDAS, pass 2's H(x) is the background `REFL_10CM`: pass 1 doesn't write it back. QICE,
-  QNICE, QNRAIN are not in the state. Same variables in both passes so their inflation files fit each other.
+  QNICE, QNRAIN are not in the state. Same variables in both passes: required only with `MRMS_INFLATION=both` (pass 2
+  reads pass 1's inflation files, one field per state variable), but kept the same with `pass1` too (user, 2026-10-15).
 - **Localization of pass 2:** `cutoff = 0.001413` (18 km zero), `vert_normalization_scale_height = 177.0` (zero at 0.5
   scale height).
 - **Flow per cycle:** extract → filter pass 1 in `run/filter/` → save to `output/<t>/filter/` → filter pass 2 in
@@ -388,3 +389,22 @@ A second way to take MRMS, chosen per run: **`MRMS_FILTER=one_pass`** (vs `two_p
 **Earlier notes, step 5 (`REFL_10CM` in the restart file):**
 
 5. State: `REFL_10CM` (`NO_COPY_BACK`) into the file `wrfrst_dart.py extract` builds from `wrfrst`. Checked 2026-10-14: `REFL_10CM` is not in `wrfrst` because its Registry I/O flags are `hdu` (history, nest down/up; `Registry.EM_COMMON:1611`), and runtime I/O (`iofields_filename`) accepts only the history (`h`) and input (`i`) streams (`frame/module_domain.F`, `modify_io_masks`), so putting it in the restart stream needs a **Registry patch (`hdu` → `hdur`) and a WRF rebuild** (option A). Thompson computes it only on `diag_flag` steps, i.e. steps where the history alarm rings (`solve_em.F:374–379`, `module_mp_thompson.F:1450`); our members write history every 15 min (`namelist.input.wrf`) at the same times as the restarts, so `wrfout` and a `wrfrst` with `REFL_10CM` at time t would hold the same array. Option B: `extract` reads `REFL_10CM` from the member's `wrfout` at t (no rebuild). **Decided (user, 2026-10-14): option A**, `patches/wrf_06d4240a_refl_10cm_restart.patch`, **applied and WRF rebuilt 2026-10-14** (old executables kept as `main/*.exe.pre_refl_restart`; `patches/README.md`). **Tested 2026-10-14 (job 1051956, all checks passed):** `REFL_10CM` in the new `wrfrst` is bit-identical to `wrfout` at the same time; nothing else changed against the pre-patch build (657 variables identical); restarting from a pre-patch `wrfrst` works and gives the same 00:30 state as from a new one (`patches/README.md`). Next in step 5: `wrfrst_dart.py extract --extra REFL_10CM` (and the hydrometeors), the state-variable list, `microphysics_type = 5`. Checked at the same time (2026-10-14) that nothing else DART reads comes from `wrfout`: the 12 pilot state fields come from `wrfrst` (`_2` level renamed by `extract`); the static grid fields and global attributes `model_mod` reads (XLAT/XLONG and U/V versions, HGT, PHB, MUB, P_TOP, ZNU, ZNW, DN, DNW, C1H, C2H, XLAND, ZS; MAP_PROJ, DX, DT, ...) come from filter's `wrfinput_d01` = `GRID_FILE`, the mean 00Z `wrfinput`, which has them all; the hydrometeors QCLOUD QRAIN QICE QSNOW QGRAUP QNICE QNRAIN are in `wrfrst` (`extract --extra`). `REFL_10CM` is the only field DART would need that is in neither; the hydrometeors (Q8). Check hydrometeor and `REFL_10CM` spread in the 5 members at 00:15 against these obs.
+
+## 9. First runs with the new observations (planned 2026-10-15, session "Adding more obs part 6")
+
+1-hour, 5-member pilot as in step 13 (cold start 00:00, analyses 00:15–01:00, `slurm.cycle 202505200000
+202505200100`, 40 nodes); every run starts from the 00Z cold start (restarts need `REFL_10CM`). **Run list (user,
+2026-10-15)**, one at a time, each only after the user's go-ahead. `RUN_NAME`s proposed, not yet agreed:
+
+| # | Observations | `OBS_NAME` | Filter | `RUN_NAME` (proposed) | Before it can run |
+|---|---|---|---|---|---|
+| 1 | MADIS (rerun of the reference) | `_madis` | one pass | `_madis` | nothing (set built) |
+| 2 | MADIS + mesonet (a), calm winds kept | `_meso_a_calmkeep` | one pass | `_meso_a` | nothing (set built) |
+| 3 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=one_pass` | `_madis_mrms1p` | nothing (set built) |
+| 4 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=two_pass` | `_madis_mrms2p` | choose `MRMS_INFLATION` (pass1 / both; open) |
+| 5 | everything | to decide | to decide | to decide | decided after 1–4 |
+
+Run 2: the user first asked for calm winds dropped, then (2026-10-15) kept them ("does not matter really"), so it
+uses the built `obs_meso_a_calmkeep/` (Sec. 7). Run 1 is also the first test of the new
+pass-1 namelist (QCLOUD updated, hydrometeors and `REFL_10CM` in the state). At the first MRMS cycle (run 3): filter
+wall time and memory, and the DART QC-7 (outlier) counts of the radar types (hand-off part 6, outlier check).
