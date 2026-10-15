@@ -179,6 +179,14 @@
 #   W: NO_COPY_BACK in the pilot, for its increments only; it changes no other variable's update
 #     (no operator reads it). May be dropped from the list in the 50-member cycling.
 #   T2 Q2 U10 V10 PSFC: NO_COPY_BACK, needed by the surface operators (WRF rediagnoses them).
+#   QCLOUD: UPDATE, as in HRRRDAS's conventional pass (U V T QVAPOR QCLOUD; Dowell 2020), added
+#     2026-10-14 for the two-pass work (obs_expansion.md Sec. 8.4); in one-pass runs too, so that
+#     a run with and one without MRMS have the same conventional pass.
+#   QRAIN QSNOW QGRAUP REFL_10CM: NO_COPY_BACK here (not written back, so the MRMS pass reads the
+#     prior REFL_10CM, its H(x), as HRRRDAS's radar pass uses the background's); listed so that
+#     both passes have the same state and their inflation files can be passed between them
+#     (MRMS_INFLATION = both). REFL_10CM needs restarts from the patched wrf.exe.
+#   The MRMS pass's list is in input.nml.filter_mrms; the variable lists must stay the same.
 # vert_localization_coord = 4: scale height.
 &model_nml
    default_state_variables = .false.,
@@ -194,7 +202,16 @@
                          'T2',     'QTY_TEMPERATURE',           'TYPE_T2',   'NO_COPY_BACK', '999',
                          'Q2',     'QTY_VAPOR_MIXING_RATIO',    'TYPE_Q2',   'NO_COPY_BACK', '999',
                          'PSFC',   'QTY_SURFACE_PRESSURE',      'TYPE_PSFC', 'NO_COPY_BACK', '999',
+                         'QCLOUD', 'QTY_CLOUDWATER_MIXING_RATIO', 'TYPE_QCLOUD', 'UPDATE',    '999',
+                         'QRAIN',  'QTY_RAINWATER_MIXING_RATIO',  'TYPE_QRAIN',  'NO_COPY_BACK', '999',
+                         'QSNOW',  'QTY_SNOW_MIXING_RATIO',       'TYPE_QSNOW',  'NO_COPY_BACK', '999',
+                         'QGRAUP', 'QTY_GRAUPEL_MIXING_RATIO',    'TYPE_QGRAUP', 'NO_COPY_BACK', '999',
+                         'REFL_10CM', 'QTY_RADAR_REFLECTIVITY',   'TYPE_REFL_10CM', 'NO_COPY_BACK', '999',
    wrf_state_bounds    = 'QVAPOR', '0.0', 'NULL', 'CLAMP',
+                         'QCLOUD', '0.0', 'NULL', 'CLAMP',
+                         'QRAIN',  '0.0', 'NULL', 'CLAMP',
+                         'QSNOW',  '0.0', 'NULL', 'CLAMP',
+                         'QGRAUP', '0.0', 'NULL', 'CLAMP',
    num_domains                 = 1,
    calendar_type               = 3,
    assimilation_period_seconds = 900,
@@ -237,16 +254,22 @@
 &obs_def_tpw_nml
    /
 
+# Radar operator (obs_expansion.md Sec. 8.3, 2026-10-14). microphysics_type = 5: H(x) is REFL_10CM
+# from the state (Thompson's own diagnostic, as HRRRDAS's if_model_dbz); if it can't be
+# interpolated the obs fails (no silent fallback to the Lin-type formula of types 1/2).
+# apply_ref_limit_to_fwd_op: H(x) below -10 dBZ is set to -10 dBZ, the value of the clear-air obs
+# (HRRRDAS's floor). The obs themselves are already floored by the converter. Used only by the
+# MRMS pass; kept the same in both files.
 &obs_def_radar_mod_nml
    apply_ref_limit_to_obs     = .false.,
    reflectivity_limit_obs     = -10.0,
    lowest_reflectivity_obs    = -10.0,
-   apply_ref_limit_to_fwd_op  = .false.,
+   apply_ref_limit_to_fwd_op  = .true.,
    reflectivity_limit_fwd_op  = -10.0,
    lowest_reflectivity_fwd_op = -10.0,
    max_radial_vel_obs         = 1000000,
    allow_wet_graupel          = .false.,
-   microphysics_type          = 2,
+   microphysics_type          = 5,
    allow_dbztowt_conv         = .false.,
    dielectric_factor          = 0.224,
    n0_rain                    = 8.0e6,

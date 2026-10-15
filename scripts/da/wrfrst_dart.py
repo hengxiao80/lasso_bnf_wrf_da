@@ -4,6 +4,7 @@ Usage: .venv/bin/python scripts/da/wrfrst_dart.py extract <wrfrst|wrfinput> <dar
        .venv/bin/python scripts/da/wrfrst_dart.py insert  <dart_file> <wrfrst>
                                                  [--fields U V W PH THM MU QVAPOR] [--no-recompute]
                                                  [--hydrostatic-ph [--prior <dart_file>]]
+       .venv/bin/python scripts/da/wrfrst_dart.py qnrain  <dart_file> --prior <dart_file>
 
 A WRF restart file stores both Runge-Kutta time levels (U_1/U_2, THM_1/THM_2, MU_1/MU_2, ...), but
 DART's WRF model_mod and update_wrf_bc look fields up by their wrfinput names (U, THM, MU, ...).
@@ -17,7 +18,8 @@ extract: writes <dart_file> (64-bit-offset netCDF, same dimensions and global at
 
 insert: writes the --fields from <dart_file> back into <wrfrst> in place, into both time levels
   of two-level fields (WRF copies _2 to _1 at the start of the first step anyway; _1 is otherwise
-  read only by implicit vertical advection, which we don't use), clipping QVAPOR at 0. Then, unless
+  read only by implicit vertical advection, which we don't use), clipping the moisture fields
+  (QVAPOR, hydrometeors, QNRAIN: names starting with Q) at 0. Then, unless
   --no-recompute, recomputes the fields a restart takes from the file but a cold start derives
   (dyn_em/start_em.F), so the first step's physics and RK tendencies see consistent values:
     AL     from PH and MU (hypsometric_opt = 2), ALT = AL + ALB,
@@ -32,6 +34,15 @@ insert: writes the --fields from <dart_file> back into <wrfrst> in place, into b
   --prior takes the prior state from a file saved before the insert (e.g. the prior DART-facing
   file) instead of the restart file, so that rerunning an interrupted insert gives the same result
   (cycling, pilot step 12).
+qnrain: after the MRMS pass (two-pass cycle), sets QNRAIN in <dart_file> wherever its QRAIN differs
+  from the --prior file's (QRAIN is in the state but QNRAIN is not, as in HRRRDAS, whose fifth step
+  rediagnoses QNRAIN from the analysed QRAIN; Dowell 2020). Rule (user, 2026-10-14): Thompson's own
+  rule for rain without a number (module_mp_thompson.F, mp_thompson: nr <= R2), an exponential size
+  distribution (mu_r = 0) with a median volume diameter of 1 mm:
+     lambda = (3 + mu_r + 0.672) / 1 mm,  QNRAIN = QRAIN * lambda^3 / (pi * rho_w)  [per kg],
+  (i.e. crg(2) / crg(3) * QRAIN * lambda^bm_r / am_r), and QNRAIN = 0 where QRAIN <= R1 = 1e-12.
+  Points where QRAIN did not change keep their QNRAIN. The alternatives (fixed N0 = 8e6 m^-4, as
+  Marshall-Palmer; keeping the prior mean size) are in notes/obs_expansion.md Sec. 8.4.
 See notes/da_5member_pilot_steps.md step 7.
 """
 
@@ -51,6 +62,11 @@ R_D, R_V, P1000MB, T0 = 287.0, 461.6, 100000.0, 300.0
 CP = 3.5 * R_D
 CPOVCV = CP / (CP - R_D)
 RVOVRD = R_V / R_D
+
+# Thompson rain (phys/module_mp_thompson.F): mu_r = 0, rho_w = 1000, am_r = pi rho_w / 6, bm_r = 3,
+# crg(2) = Gamma(mu_r + 1) = 1, crg(3) = Gamma(bm_r + mu_r + 1) = 6; R1 = 1e-12 (smallest mixing ratio)
+THOMPSON_R1 = 1.0e-12
+THOMPSON_LAMR_1MM = (3.0 + 0.0 + 0.672) / 1.0e-3
 
 
 def extract(rst_path, out_path, extra):
@@ -108,7 +124,7 @@ def insert(dart_path, rst_path, fields, do_recompute, hydrostatic_ph=False, prio
             raise SystemExit(f"time mismatch: {dart_path} vs {rst_path}")
         for name in fields:
             field = np.asarray(dart[name][:])
-            if name == "QVAPOR":
+            if name.startswith("Q"):
                 field = np.maximum(field, 0.0)
             targets = [name + "_1", name + "_2"] if name in TWO_LEVEL else [name]
             for t in targets:
@@ -128,6 +144,22 @@ def insert(dart_path, rst_path, fields, do_recompute, hydrostatic_ph=False, prio
                 print(f"   {n}: recomputed - file value: RMS {rms:.3g}, max {mx:.3g}")
 
 
+def qnrain(dart_path, prior_path):
+    with netCDF4.Dataset(prior_path) as pr:
+        qr_prior = np.asarray(pr["QRAIN"][:], np.float64)
+    with netCDF4.Dataset(dart_path, "a") as ds:
+        qr = np.maximum(np.asarray(ds["QRAIN"][:], np.float64), 0.0)
+        nr_old = np.asarray(ds["QNRAIN"][:], np.float64)
+        changed = qr != qr_prior
+        nr_new = np.where(qr > THOMPSON_R1, qr * THOMPSON_LAMR_1MM ** 3 / (np.pi * 1000.0), 0.0)
+        ds["QNRAIN"][:] = np.where(changed, nr_new, nr_old).astype(np.float32)
+    rain = changed & (qr > THOMPSON_R1)
+    both = rain & (nr_old > 0)
+    print(f"   QNRAIN: QRAIN changed at {changed.sum()} points, rain (> R1) at {rain.sum()},"
+          f" of which {both.sum()} had a prior QNRAIN"
+          + (f" (new / old: median {np.median(nr_new[both] / nr_old[both]):.3g})" if both.any() else ""))
+
+
 def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -142,9 +174,14 @@ def main():
     i.add_argument("--no-recompute", action="store_true")
     i.add_argument("--hydrostatic-ph", action="store_true")
     i.add_argument("--prior", help="prior state for --hydrostatic-ph (default: the restart file)")
+    q = sub.add_parser("qnrain")
+    q.add_argument("dart_file")
+    q.add_argument("--prior", required=True, help="DART-facing file before the analysis")
     args = p.parse_args()
     if args.cmd == "extract":
         extract(args.wrfrst, args.dart_file, args.extra)
+    elif args.cmd == "qnrain":
+        qnrain(args.dart_file, args.prior)
     else:
         insert(args.dart_file, args.wrfrst, args.fields, not args.no_recompute, args.hydrostatic_ph,
                args.prior)

@@ -110,20 +110,21 @@ def states(before, after, nmem):
         diff_report(os.path.join(before, sub), os.path.join(after, sub), STATE + ["T"], "")
 
 
-def stages(run):
+def stages(run, names=STATE):
     j = lambda f: os.path.join(run, f)
     print("mean increment, postassim_mean - preassim_mean:")
-    diff_report(j("preassim_mean.nc"), j("postassim_mean.nc"), STATE, "")
+    diff_report(j("preassim_mean.nc"), j("postassim_mean.nc"), names, "")
     with netCDF4.Dataset(j("preassim_sd.nc")) as sd:
+        names = [n for n in names if n in sd.variables]
         print("prior spread (preassim_sd), domain RMS:")
-        for n in STATE:
+        for n in names:
             print(f"   {n:7s} {np.sqrt((np.asarray(sd[n][:], np.float64) ** 2).mean()):.3g}")
     # output_priorinf_* holds only the UPDATE variables; postassim_priorinf_* has the same updated
     # values for those and also the NO_COPY_BACK ones, so it is the one to pass to the next cycle.
     if os.path.exists(j("postassim_priorinf_mean.nc")):
         with netCDF4.Dataset(j("postassim_priorinf_mean.nc")) as inf:
             print("updated prior inflation mean, postassim_priorinf_mean (min / mean / max):")
-            for n in STATE:
+            for n in names:
                 v = np.asarray(inf[n][:], np.float64)
                 print(f"   {n:7s} {v.min():.4f} / {v.mean():.4f} / {v.max():.4f}")
 

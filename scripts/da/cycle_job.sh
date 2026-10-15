@@ -6,8 +6,11 @@
 #
 # Stages and their markers in output/<t>/ (a rerun skips what is marked done):
 #   filter.done          prep_filter.sh, filter (FILTER_NODES x FILTER_TASKS_PER_NODE ranks),
-#                        post_filter.sh save. Before this marker the restart files are untouched,
-#                        so the whole stage is simply rerun.
+#                        post_filter.sh save; in a two-pass run (observation set with MRMS) then the
+#                        same for the MRMS pass (run/filter_mrms, output/<t>/filter_mrms) on the
+#                        member files the first pass updated. Before this marker the restart files
+#                        are untouched, so the whole stage (both passes, from the extraction) is
+#                        simply rerun.
 #   memNNN/update.done   post_filter.sh member: analysis into the restart file, boundary refit
 #   memNNN/advance.done  advance_member.sh: the 15-min segment, all members concurrently
 #   status = complete    check_cycle.py passed (output/<t>/check_cycle.log)
@@ -29,18 +32,24 @@ echo running > "${out}/status"
 SECONDS=0
 
 # --- analysis -----------------------------------------------------------------------------
+# one filter pass: conv in run/filter, mrms in run/filter_mrms
+filter_pass() {
+   local pass=$1 dir=${RUN_DIR}/filter t0=${SECONDS}
+   [ "${pass}" = conv ] || dir=${RUN_DIR}/filter_mrms
+   "${DA}/prep_filter.sh" "${exp_sh}" "${t}" "${pass}"
+   log "cycle ${t}: filter (${pass}) on $((FILTER_NODES * FILTER_TASKS_PER_NODE)) ranks"
+   (cd "${dir}" && srun -N "${FILTER_NODES}" -n $((FILTER_NODES * FILTER_TASKS_PER_NODE)) \
+      --ntasks-per-node="${FILTER_TASKS_PER_NODE}" -c 1 --exact "${DART_WORK}/filter" > filter.log 2>&1) \
+      || die "filter (${pass}) failed at ${t}, see ${dir}/filter.log"
+   grep -q 'Finished \.\.\. at' "${dir}/filter.log" \
+      || die "filter (${pass}) did not finish at ${t}, see ${dir}/filter.log"
+   log "cycle ${t}: filter (${pass}) done in $((SECONDS - t0)) s"
+   "${DA}/post_filter.sh" "${exp_sh}" "${t}" save "${pass}"
+}
 if [ "${t}" != "${FIRST_CYCLE}" ]; then
    if [ ! -f "${out}/filter.done" ]; then
-      "${DA}/prep_filter.sh" "${exp_sh}" "${t}"
-      log "cycle ${t}: filter on $((FILTER_NODES * FILTER_TASKS_PER_NODE)) ranks"
-      t0=${SECONDS}
-      (cd "${RUN_DIR}/filter" && srun -N "${FILTER_NODES}" -n $((FILTER_NODES * FILTER_TASKS_PER_NODE)) \
-         --ntasks-per-node="${FILTER_TASKS_PER_NODE}" -c 1 --exact "${DART_WORK}/filter" > filter.log 2>&1) \
-         || die "filter failed at ${t}, see ${RUN_DIR}/filter/filter.log"
-      grep -q 'Finished \.\.\. at' "${RUN_DIR}/filter/filter.log" \
-         || die "filter did not finish at ${t}, see ${RUN_DIR}/filter/filter.log"
-      log "cycle ${t}: filter done in $((SECONDS - t0)) s"
-      "${DA}/post_filter.sh" "${exp_sh}" "${t}" save
+      filter_pass conv
+      if two_pass; then filter_pass mrms; fi
       touch "${out}/filter.done"
    fi
    "${DA}/post_filter.sh" "${exp_sh}" "${t}" members

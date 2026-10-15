@@ -24,6 +24,12 @@ while [ "${t}" -le "${last}" ]; do
    if [ "${t}" != "${FIRST_CYCLE}" ] && [ ! -s "${OBS_DIR}/${t}/obs_seq.out" ]; then
       die "no ${OBS_DIR}/${t}/obs_seq.out (make_cycle_obs.sh ${t})"
    fi
+   f=
+   two_pass && f=obs_seq.mrms
+   one_pass_mrms && f=obs_seq.joint
+   if [ "${t}" != "${FIRST_CYCLE}" ] && [ -n "${f}" ] && [ ! -s "${OBS_DIR}/${t}/${f}" ]; then
+      die "no ${OBS_DIR}/${t}/${f} (make_cycle_obs.sh ${t} with MRMS set)"
+   fi
    t=$(add_minutes "${t}" "${CYCLE_MINUTES}")
 done
 if [ "${first}" != "${FIRST_CYCLE}" ]; then
@@ -31,14 +37,40 @@ if [ "${first}" != "${FIRST_CYCLE}" ]; then
    grep -qx complete "${OUTPUT_DIR}/${prev}/status" 2> /dev/null || die "cycle ${prev} not complete"
 fi
 
-# One HYDROSTATIC_PH, INF_DAMPING, INF_FLAVOR and observation set per run: a resume with other values
-# would mix them in one run. The observation set (OBS_NAME) is recorded only when it isn't the step 13 obs/,
-# so the step 13 runs keep their settings line.
+# One HYDROSTATIC_PH, INF_DAMPING, INF_FLAVOR, INF_SD_LOWER_BOUND and observation set per run: a resume
+# with other values would mix them in one run. The observation set (OBS_NAME) is recorded only when it
+# isn't the step 13 obs/, so the step 13 runs keep their settings line.
 mkdir -p "${OUTPUT_DIR}"
 settings="hydrostatic_ph=${HYDROSTATIC_PH} inf_damping=${INF_DAMPING} inf_flavor=${INF_FLAVOR}"
+# INF_SD_LOWER_BOUND: 0 < value <= 0.6 (the initial sd); recorded only when not 0.6, so older runs keep
+# their settings line.
+awk -v b="${INF_SD_LOWER_BOUND}" 'BEGIN { exit !(b ~ /^[0-9]*\.?[0-9]+$/ && b > 0 && b <= 0.6) }' \
+   || die "INF_SD_LOWER_BOUND=${INF_SD_LOWER_BOUND}: must be > 0 and <= 0.6"
+[ "${INF_SD_LOWER_BOUND}" = 0.6 ] || settings="${settings} inf_sd_lower_bound=${INF_SD_LOWER_BOUND}"
 if [ -n "${OBS_NAME}" ]; then
    [ -s "${OBS_DIR}/obs_settings.txt" ] || die "no ${OBS_DIR}/obs_settings.txt (make_cycle_obs.sh)"
    settings="${settings} obs=obs${OBS_NAME} $(cat "${OBS_DIR}/obs_settings.txt")"
+fi
+# MRMS runs: MRMS_FILTER (two_pass | one_pass) has no default and must be given, and so has
+# MRMS_INFLATION (pass1 | both) for two_pass; neither may be set where it doesn't apply.
+if has_mrms; then
+   case ${MRMS_FILTER} in
+      two_pass|one_pass) settings="${settings} mrms_filter=${MRMS_FILTER}" ;;
+      *) die "${OBS_DIR} has MRMS: set MRMS_FILTER=two_pass or one_pass" ;;
+   esac
+elif [ -n "${MRMS_FILTER}" ]; then
+   die "MRMS_FILTER=${MRMS_FILTER} set, but ${OBS_DIR} has no MRMS"
+fi
+if two_pass; then
+   case ${MRMS_INFLATION} in
+      pass1) settings="${settings} mrms_inflation=pass1" ;;
+      both)
+         case ${MRMS_PASS2_DAMPING} in 0|1) ;; *) die "MRMS_PASS2_DAMPING must be 0 or 1" ;; esac
+         settings="${settings} mrms_inflation=both mrms_pass2_damping=${MRMS_PASS2_DAMPING}" ;;
+      *) die "two-pass run: set MRMS_INFLATION=pass1 or both" ;;
+   esac
+elif [ -n "${MRMS_INFLATION}" ]; then
+   die "MRMS_INFLATION=${MRMS_INFLATION} set, but this is not a two-pass run"
 fi
 if [ -f "${OUTPUT_DIR}/settings.txt" ]; then
    grep -qx "${settings}" "${OUTPUT_DIR}/settings.txt" \
@@ -47,7 +79,7 @@ else
    echo "${settings}" > "${OUTPUT_DIR}/settings.txt"
 fi
 
-log "driver: run '${RUN_NAME}' (${RUN_DIR}), ${#times[@]} cycles ${first} -> ${last}, ${NUM_ENS} members, hydrostatic_ph=${HYDROSTATIC_PH}, inf_damping=${INF_DAMPING}, inf_flavor=${INF_FLAVOR}, obs ${OBS_DIR}"
+log "driver: run '${RUN_NAME}' (${RUN_DIR}), ${#times[@]} cycles ${first} -> ${last}, ${NUM_ENS} members, hydrostatic_ph=${HYDROSTATIC_PH}, inf_damping=${INF_DAMPING}, inf_flavor=${INF_FLAVOR}, inf_sd_lower_bound=${INF_SD_LOWER_BOUND}, obs ${OBS_DIR}"
 for t in "${times[@]}"; do
    mkdir -p "${OUTPUT_DIR}/${t}"
    log "driver: cycle ${t}"
@@ -55,6 +87,6 @@ for t in "${times[@]}"; do
       tail -n 30 "${OUTPUT_DIR}/${t}/cycle.log"
       die "cycle ${t} failed, see ${OUTPUT_DIR}/${t}/cycle.log"
    fi
-   grep -E 'filter done|complete in' "${OUTPUT_DIR}/${t}/cycle.log" | tail -n 2
+   grep -E 'filter( \([a-z]*\))? done|complete in' "${OUTPUT_DIR}/${t}/cycle.log" | tail -n 3
 done
 log "driver: done"

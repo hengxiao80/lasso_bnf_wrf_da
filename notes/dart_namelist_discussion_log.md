@@ -284,3 +284,87 @@ Follows the 2026-10-13 proposal above (`notes/obs_expansion.md` Sec. 7.2, "Wired
 - **Wider note:** with `r8 = r4`, every DART great-circle distance below ~2 km is unreliable (0 or ~2.2 km). Harmless
   for localization (weights ~1 there), but any "same location" test in DART tools is effectively a ~2-km test.
   Marine reports are added before land surface too, so mesonet near a marine report would be dropped; none in our domain.
+
+## Two-pass filter for MRMS: `config/input.nml.filter_mrms`, state, inflation, radar operator — 2026-10-14
+
+Follows the entry "MRMS reflectivity ... (nothing changed yet)" above; design in `notes/obs_expansion.md` Sec. 8.4.
+
+- **Decided (user, 2026-10-14): two filter passes per cycle, as HRRRDAS** (Dowell 2020 pp. 5–6;
+  `scripts/hrrrdas/exhrrr_analysis.sh`, `exhrrr_enkf.sh`): conventional obs first, then MRMS on the result. HRRRDAS
+  computes every H(x), radar ones too, once from the background (GSI observer per member) and never updates
+  reflectivity, so its radar pass regresses the conventional analysis on background-reflectivity priors. Ours does
+  the same: `REFL_10CM` is `NO_COPY_BACK` in both passes, so the MRMS pass reads the background's.
+- **First pass, `input.nml.filter` (changed):** `QCLOUD` added as `UPDATE` (HRRRDAS's conventional pass analyses
+  U, V, T, QVAPOR, QCLOUD), and `QRAIN`, `QSNOW`, `QGRAUP`, `REFL_10CM` as `NO_COPY_BACK`, so both passes have the
+  same variables (needed if inflation is passed between them). `wrf_state_bounds` 0 / `CLAMP` for the four
+  hydrometeors. This is also the conventional pass of runs without MRMS (the new `_madis` reference), so a run with
+  MRMS differs from its reference only by the second pass. It needs restarts with `REFL_10CM` (patched `wrf.exe`), so
+  the step 13 runs (`run*/`) can't be resumed with it.
+- **Second pass, `input.nml.filter_mrms` (new):** a copy of the first pass's file with
+  - `assimilate_these_obs_types = 'RADAR_REFLECTIVITY', 'RADAR_CLEARAIR_REFLECTIVITY'`, from `obs_seq.mrms`;
+  - `UPDATE` U V THM QVAPOR QCLOUD QRAIN QSNOW QGRAUP (HRRRDAS's radar pass); PH, MU, W `NO_COPY_BACK`;
+  - `cutoff = 0.001413` (18 km zero influence) and `vert_normalization_scale_height = 177.0`, which keeps the
+    vertical zero at 0.5 scale height (2 × 0.001413 × 177 = 0.5). A pass holds one obs family, so these are the
+    global values; no `special_localization_obs_types`;
+  - inflation as set by `MRMS_INFLATION` (below); `print_every_nth_obs = 10000`.
+- **`&obs_def_radar_mod_nml` (changed, both files):** `microphysics_type = 5` (H(x) = state `REFL_10CM`; if it can't
+  be interpolated the obs fails, with no Lin-type fallback). `apply_ref_limit_to_fwd_op = .true.` with the −10 dBZ
+  limit and value (HRRRDAS's H(x) floor).
+- **QNRAIN (decided, user 2026-10-14):** not in the state; after the MRMS pass `wrfrst_dart.py qnrain` resets it
+  wherever QRAIN changed, with Thompson's own rule for rain without a number: exponential, median volume diameter
+  1 mm. The other two rules (fixed N0 = 8e6 m⁻⁴; keep the prior mean size) are documented in `obs_expansion.md`
+  Sec. 8.4 for later.
+- **Inflation in the MRMS pass: open (user researching).** `MRMS_INFLATION` has no default and must be given for a
+  two-pass run (`driver.sh` refuses otherwise): `pass1` = no inflation in the MRMS pass (`inf_flavor = 0`, as in the
+  file); `both` = the MRMS pass reads the first pass's updated inflation with `inf_damping = 1.0`, applies and
+  updates it, and the next cycle starts from the MRMS pass's. DART's prior inflation applies to the whole state, so
+  `both` inflates the spread twice per cycle, not only near radar obs.
+- **Lateral boundary for MRMS (decided, user 2026-10-14):** the converter copies `wrf_dart_obs_preprocess`'s
+  `obs_boundary = 5` trim and `increase_bdy_error` (`obsdistbdy = 15`, `maxobsfac = 2.5`) exactly (checked:
+  variances 107.3 dBZ² at the first kept row down to 25 at 15 points).
+- **Not yet considered: `&quality_control_nml outlier_threshold = 3`** applies to the radar obs too. A 40-dBZ ob where
+  every member is clear (−10 after the floor) has |innovation| = 50 against sqrt(25 + 0) = 5, so it is rejected;
+  but zero H(x) spread means it could do nothing anyway. Where spread is small but non-zero, the 3-sigma test may reject
+  the obs that would start convection. Look at the DART QC counts of the first MRMS cycle before changing it.
+
+## One-pass MRMS alternative: `config/input.nml.filter_joint`, impact table, per-type localization — 2026-10-14
+
+Asked for by the user after the two-pass entry above; details in `notes/obs_expansion.md` Sec. 8.5. A run on an MRMS
+observation set now chooses `MRMS_FILTER = two_pass | one_pass` (no default).
+
+- **`input.nml.filter_joint` (new):** `input.nml.filter` + `RADAR_REFLECTIVITY`, `RADAR_CLEARAIR_REFLECTIVITY` assimilated
+  (from `obs_seq.joint`); QRAIN QSNOW QGRAUP `UPDATE`.
+- **`&assim_tools_nml`:** `special_localization_obs_types = 'RADAR_REFLECTIVITY', 'RADAR_CLEARAIR_REFLECTIVITY'`,
+  `special_localization_cutoffs = 0.001413, 0.001413`; `adjust_obs_impact = .true.`, `obs_impact_filename =
+  'obs_impact_joint.txt'`, `allow_any_impact_values = .false.` (factors 0 or 1 only).
+- **`&location_nml`:** `special_vert_normalization_obs_types` = the radar types with `_scale_heights = 177.0` (the other
+  three at the global values), so their vertical zero is 0.5 scale height with their own cutoff; conventional obs
+  keep 10.6 with 0.0235.
+- **Impact table (`config/obs_impact_joint.txt`):** radar → MU, PH, PSFC, W quantities 0; conventional → QRAIN, QSNOW,
+  QGRAUP and `QTY_RADAR_REFLECTIVITY` 0. The last one is a choice: 0 keeps the radar priors at the background (as
+  HRRRDAS and our two-pass); 1 would let conventional obs update them.
+- **Inflation:** one adaptive prior inflation, as the first pass; `MRMS_INFLATION` not used.
+
+## Damping in the second (MRMS) pass under `MRMS_INFLATION = both` — 2026-10-15
+
+- **Decided (user, 2026-10-15): a switch, `MRMS_PASS2_DAMPING`, default 1 (on).** With `MRMS_INFLATION = both`,
+  `prep_filter.sh mrms` sets pass 2's `inf_damping` to `INF_DAMPING` (1) or 1.0 (0); before, it was always 1.0. With
+  the default the inflation read from pass 1 is damped again before pass 2 applies it, i.e. twice per cycle,
+  effectively `INF_DAMPING`² per 15-min cycle (0.81 for 0.9, an e-folding time of ~1.2 h instead of ~2.4 h). Ignored
+  for `MRMS_INFLATION = pass1` and one-pass runs; `driver.sh` records it in `settings.txt` for `both`.
+
+## Inflation for the MRMS runs: damping, flavor 5 with an evolving sd (`&filter_nml :: inf_*`) — 2026-10-15
+
+Raised by the user as candidates to try, alongside `MRMS_INFLATION` (pass1 | both, still open).
+
+- **`inf_damping`:** still 0.9 per 15-min cycle by default (tutorial value for 6-h cycles; e-folding ~2.4 h instead of
+  ~57 h; 0.9956 matches the tutorial's time scale). Already a per-run setting (`INF_DAMPING`); the 1-hour pilot's
+  `_hph_d9956` run is the only test so far (2026-10-03 entry above).
+- **Flavor 5 with an evolving sd: new per-run setting `INF_SD_LOWER_BOUND`** (`experiment.sh`, default 0.6 = no
+  change). `prep_filter.sh` writes it into the first column of `inf_sd_lower_bound` of every pass that inflates
+  (conv; mrms under `both`; joint); `driver.sh` accepts 0 < value <= 0.6 and records it in `settings.txt` when not 0.6.
+  The initial sd stays 0.6 (`fill_inflation_restart`), so with a bound below 0.6 the sd can evolve: with flavor 5 it
+  can grow or shrink, with flavor 2 only shrink. In `bayes_cov_inflate` (GHA2017 branch) an sd update larger than
+  `inf_sd_max_change` (1.05) times the old sd is skipped (the old sd kept), not clipped, and this is per observation.
+  No value chosen yet (DART's guide: smaller bounds make the inflation vary more slowly; it recommends 0.6 / 0.6 for
+  large models). DART's guide also recommends `inf_lower_bound = 0` for flavor 5 (deflation allowed); ours stays 1.0.

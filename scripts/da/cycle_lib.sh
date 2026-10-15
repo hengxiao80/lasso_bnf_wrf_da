@@ -23,3 +23,13 @@ wait_all() {
    for pid in "$@"; do wait "${pid}" || fail=1; done
    return ${fail}
 }
+
+# MRMS runs (obs_expansion.md Sec. 8.4): the run's observation set has MRMS; MRMS_FILTER (experiment.sh)
+# says how filter takes it: two_pass (conventional, then MRMS) or one_pass (both in one filter, obs_seq.joint).
+has_mrms() { grep -q ' mrms=' "${OBS_DIR}/obs_settings.txt" 2> /dev/null; }
+two_pass() { has_mrms && [ "${MRMS_FILTER}" = two_pass ]; }
+one_pass_mrms() { has_mrms && [ "${MRMS_FILTER}" = one_pass ]; }
+
+# Fields the DART-facing file carries besides wrfrst_dart.py's own (filter's hydrometeor and
+# REFL_10CM state, QNRAIN for wrfrst_dart.py qnrain).
+DART_EXTRA="QCLOUD QRAIN QSNOW QGRAUP REFL_10CM QNRAIN"

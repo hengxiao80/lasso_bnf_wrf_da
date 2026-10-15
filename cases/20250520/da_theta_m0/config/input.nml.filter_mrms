@@ -1,0 +1,278 @@
+&utilities_nml
+   TERMLEVEL      = 1,
+   module_details = .false.,
+   logfilename    = 'dart_log.out',
+   nmlfilename    = 'dart_log.nml',
+   write_nml      = 'file',
+   /
+
+&mpi_utilities_nml
+   /
+
+# Required by filter in this DART version (QCEFF). No table: default EAKF for every quantity,
+# no probit transform or bounds.
+&algorithm_info_nml
+   qceff_table_filename = ''
+   /
+
+&probit_transform_nml
+   /
+
+# SECOND (MRMS) PASS of the two-pass cycle (obs_expansion.md Sec. 8.4, 2026-10-14). Same as
+# input.nml.filter except: obs (RADAR_REFLECTIVITY and RADAR_CLEARAIR_REFLECTIVITY only, from
+# obs_seq.mrms), localization (18 km / 0.5 scale height), which state variables are written back
+# (HRRRDAS's radar pass), inflation (set by prep_filter.sh from MRMS_INFLATION) and
+# print_every_nth_obs. It runs in run/filter_mrms/ on the member files the first pass has just
+# updated in place. Keep the other blocks in step with input.nml.filter.
+#
+# Pilot settings carried over from the first pass's file:
+# 5-member, 15-min pilot (theta_m0 setup), pilot step 11. One fixed file for every cycle: the
+# member files come in through the lists, the inflation through input_priorinf_{mean,sd}.nc.
+# input_list_d01.txt and output_list_d01.txt both list run/memNNN/dart_d01.nc (written by
+# wrfrst_dart.py extract), so the analysis is written in place. wrfinput_d01 in the run
+# directory (the mean wrfinput) gives the grid and the variable shapes.
+# Decisions: notes/da_5member_pilot_steps.md (Q8, Q10, Q12, Q13), discussion log
+# notes/dart_namelist_discussion_log.md.
+#
+# Output (Q10, pilot and first extensions): members, mean and sd at the input, preassim and
+# postassim stages, plus mean and sd at the output stage. output_members applies to every
+# listed stage. The member stage files hold the analyses of the NO_COPY_BACK fields (W, T2, Q2,
+# U10, V10, PSFC). For long runs: output_members = .false.
+#
+# Inflation in this pass: written by prep_filter.sh from MRMS_INFLATION (experiment.sh): pass1 ->
+# inf_flavor 0 (none); both -> INF_FLAVOR, starting from the first pass's postassim_priorinf_*, with
+# inf_damping INF_DAMPING (MRMS_PASS2_DAMPING = 1, default) or 1.0 (= 0). The values below are the
+# pass1 case. First pass's comment:
+# Inflation (Q13): spatially varying adaptive prior inflation as in the tutorial, no posterior
+# inflation. inf_damping = 0.9 is inherited from the tutorial, which cycles every 6 h; applied
+# every 15 min it relaxes the excess inflation with an e-folding time of ~2.4 h (9.5 cycles)
+# instead of ~57 h. Not tuned: decide from the inflation fields in the extension (step 14).
+# inf_upper_bound lowered from the tutorial's 10000 to 5 as a safety cap.
+&filter_nml
+   async                    = 0,
+   adv_ens_command          = './no_advance_model',
+   ens_size                 = 5,
+   obs_sequence_in_name     = 'obs_seq.out',
+   obs_sequence_out_name    = 'obs_seq.final',
+   input_state_file_list    = 'input_list_d01.txt',
+   output_state_file_list   = 'output_list_d01.txt',
+   init_time_days           = -1,
+   init_time_seconds        = -1,
+   first_obs_days           = -1,
+   first_obs_seconds        = -1,
+   last_obs_days            = -1,
+   last_obs_seconds         = -1,
+   num_output_state_members = 5,
+   num_output_obs_members   = 5,
+   output_interval          = 1,
+   num_groups               = 1,
+   distributed_state        = .true.,
+   compute_posterior        = .true.,
+   output_forward_op_errors = .false.,
+   output_timestamps        = .true.,
+   trace_execution          = .true.,
+   silence                  = .false.,
+
+   stages_to_write          = 'input', 'preassim', 'postassim', 'output'
+   output_members           = .true.
+   output_mean              = .true.
+   output_sd                = .true.
+   write_all_stages_at_end  = .false.
+
+   inf_flavor                  = 0,                       0,
+   inf_initial_from_restart    = .true.,                  .false.,
+   inf_sd_initial_from_restart = .true.,                  .false.,
+   inf_initial                 = 1.0,                     1.0,
+   inf_lower_bound             = 1.0,                     1.0,
+   inf_upper_bound             = 5.0,                     5.0,
+   inf_damping                 = 1.0,                     1.0,
+   inf_sd_initial              = 0.6,                     0.0,
+   inf_sd_lower_bound          = 0.6,                     0.0,
+   inf_sd_max_change           = 1.05,                    1.05,
+   /
+
+# MADIS observations all carry QC = 1 (step 10 files), so the input threshold passes them all.
+&quality_control_nml
+   input_qc_threshold          = 3.0,
+   outlier_threshold           = 3.0,
+   enable_special_outlier_code = .false.
+   /
+
+# Initial inflation files for the first analysis (00:15), written once with any member file as
+# the template: input_priorinf_mean.nc (1.0) and input_priorinf_sd.nc (0.6).
+&fill_inflation_restart_nml
+   write_prior_inf   = .true.
+   prior_inf_mean    = 1.00
+   prior_inf_sd      = 0.6
+
+   write_post_inf    = .false.
+   post_inf_mean     = 1.00
+   post_inf_sd       = 0.6
+
+   input_state_files = 'dart_d01.nc'
+   single_file       = .false.
+   verbose           = .false.
+   /
+
+# Localization of this pass: HRRRDAS's radar pass, 18 km horizontally and 0.5 scale height
+# vertically, both the zero-influence distance (obs_expansion.md Sec. 1): cutoff = 9 km / 6371 km
+# = 0.001413 rad, and vert_normalization_scale_height (&location_nml) = 0.5 / (2 * 0.001413) = 177
+# keeps the vertical zero at 0.5 scale height. One pass has one obs family, so the global values are
+# used rather than special_localization_obs_types.
+# First pass's comment:
+# Localization (Q12): HRRRDAS conventional observations, 300 km horizontally and 0.5 scale height
+# vertically, read as the zero-influence distances (GSI-EnKF convention; to be checked against
+# Dowell et al. 2022). DART's Gaspari-Cohn weight reaches 0 at 2 * cutoff, so
+# cutoff = 150 km / 6371 km = 0.0235 rad. Distance = sqrt(dh^2 + (dz / vert_normalization)^2),
+# dz in scale height -ln(p/psfc), so a pure vertical separation reaches 0 at
+# 2 * cutoff * vert_normalization_scale_height = 2 * 0.0235 * 10.6 = 0.5.
+# Changing cutoff changes the vertical width too, unless the normalization is changed with it.
+# sampling_error_correction reads sampling_error_correction_table.nc from the run directory.
+&assim_tools_nml
+   cutoff                            = 0.001413,
+   sort_obs_inc                      = .false.,
+   spread_restoration                = .false.,
+   sampling_error_correction         = .true.,
+   adaptive_localization_threshold   = -1,
+   output_localization_diagnostics   = .false.,
+   localization_diagnostics_file     = 'localization_diagnostics',
+   convert_all_state_verticals_first = .true.
+   convert_all_obs_verticals_first   = .true.
+   print_every_nth_obs               = 10000,
+   /
+
+&cov_cutoff_nml
+   select_localization = 1,
+   /
+
+&reg_factor_nml
+   select_regression    = 1,
+   input_reg_file       = 'time_mean_reg',
+   save_reg_diagnostics = .false.,
+   reg_diagnostics_file = 'reg_diagnostics',
+   /
+
+&obs_sequence_nml
+   write_binary_obs_sequence = .false.,
+   /
+
+# MRMS (mrms_to_obs_seq.py, HRRRDAS settings): precipitation obs (Z >= 10 dBZ) and clear-air obs
+# (-10 dBZ), both assimilated, error 5 dBZ (inflated near the boundary by the converter).
+&obs_kind_nml
+   assimilate_these_obs_types = 'RADAR_REFLECTIVITY',
+                                'RADAR_CLEARAIR_REFLECTIVITY',
+   /
+
+# State of this pass: the first pass's variables, with HRRRDAS's radar-pass analysis variables
+# written back (U V T QVAPOR QCLOUD QRAIN QSNOW QGRAUPEL; Dowell 2020); PH and MU are not (with
+# HYDROSTATIC_PH = 1 post_filter.sh rebuilds PH from MU, THM and QVAPOR anyway). REFL_10CM stays
+# NO_COPY_BACK; QNRAIN is set afterwards from QRAIN (wrfrst_dart.py qnrain). First pass's comment:
+# State (Q8). THM, not T (model_mod requires it for use_theta_m = 0). Quantities as in DART's
+# wrf_state_variables_table (Q2 is a mixing ratio; model_mod converts it to specific humidity for
+# the METAR humidity operator).
+#   U V THM QVAPOR PH MU: UPDATE. PH is always required; MU lets surface-pressure observations
+#     change the column mass. Whether PH is replaced by the hydrostatic increment
+#     (wrfrst_dart.py insert --hydrostatic-ph) is decided from the first real analysis (step 13).
+#   W: NO_COPY_BACK in the pilot, for its increments only; it changes no other variable's update
+#     (no operator reads it). May be dropped from the list in the 50-member cycling.
+#   T2 Q2 U10 V10 PSFC: NO_COPY_BACK, needed by the surface operators (WRF rediagnoses them).
+#   QCLOUD: UPDATE, as in HRRRDAS's conventional pass (U V T QVAPOR QCLOUD; Dowell 2020), added
+#     2026-10-14 for the two-pass work (obs_expansion.md Sec. 8.4); in one-pass runs too, so that
+#     a run with and one without MRMS have the same conventional pass.
+#   QRAIN QSNOW QGRAUP REFL_10CM: NO_COPY_BACK here (not written back, so the MRMS pass reads the
+#     prior REFL_10CM, its H(x), as HRRRDAS's radar pass uses the background's); listed so that
+#     both passes have the same state and their inflation files can be passed between them
+#     (MRMS_INFLATION = both). REFL_10CM needs restarts from the patched wrf.exe.
+#   The MRMS pass's list is in input.nml.filter_mrms; the variable lists must stay the same.
+# vert_localization_coord = 4: scale height.
+&model_nml
+   default_state_variables = .false.,
+   wrf_state_variables = 'U',      'QTY_U_WIND_COMPONENT',      'TYPE_U',    'UPDATE',       '999',
+                         'V',      'QTY_V_WIND_COMPONENT',      'TYPE_V',    'UPDATE',       '999',
+                         'W',      'QTY_VERTICAL_VELOCITY',     'TYPE_W',    'NO_COPY_BACK', '999',
+                         'PH',     'QTY_GEOPOTENTIAL_HEIGHT',   'TYPE_GZ',   'NO_COPY_BACK', '999',
+                         'THM',    'QTY_POTENTIAL_TEMPERATURE', 'TYPE_T',    'UPDATE',       '999',
+                         'MU',     'QTY_PRESSURE',              'TYPE_MU',   'NO_COPY_BACK', '999',
+                         'QVAPOR', 'QTY_VAPOR_MIXING_RATIO',    'TYPE_QV',   'UPDATE',       '999',
+                         'U10',    'QTY_U_WIND_COMPONENT',      'TYPE_U10',  'NO_COPY_BACK', '999',
+                         'V10',    'QTY_V_WIND_COMPONENT',      'TYPE_V10',  'NO_COPY_BACK', '999',
+                         'T2',     'QTY_TEMPERATURE',           'TYPE_T2',   'NO_COPY_BACK', '999',
+                         'Q2',     'QTY_VAPOR_MIXING_RATIO',    'TYPE_Q2',   'NO_COPY_BACK', '999',
+                         'PSFC',   'QTY_SURFACE_PRESSURE',      'TYPE_PSFC', 'NO_COPY_BACK', '999',
+                         'QCLOUD', 'QTY_CLOUDWATER_MIXING_RATIO', 'TYPE_QCLOUD', 'UPDATE',    '999',
+                         'QRAIN',  'QTY_RAINWATER_MIXING_RATIO',  'TYPE_QRAIN',  'UPDATE',       '999',
+                         'QSNOW',  'QTY_SNOW_MIXING_RATIO',       'TYPE_QSNOW',  'UPDATE',       '999',
+                         'QGRAUP', 'QTY_GRAUPEL_MIXING_RATIO',    'TYPE_QGRAUP', 'UPDATE',       '999',
+                         'REFL_10CM', 'QTY_RADAR_REFLECTIVITY',   'TYPE_REFL_10CM', 'NO_COPY_BACK', '999',
+   wrf_state_bounds    = 'QVAPOR', '0.0', 'NULL', 'CLAMP',
+                         'QCLOUD', '0.0', 'NULL', 'CLAMP',
+                         'QRAIN',  '0.0', 'NULL', 'CLAMP',
+                         'QSNOW',  '0.0', 'NULL', 'CLAMP',
+                         'QGRAUP', '0.0', 'NULL', 'CLAMP',
+   num_domains                 = 1,
+   calendar_type               = 3,
+   assimilation_period_seconds = 900,
+   vert_localization_coord     = 4,
+   center_search_half_length   = 500000.,
+   center_spline_grid_scale    = 10,
+   sfc_elev_max_diff           = -1.0,
+   circulation_pres_level      = 80000.0,
+   circulation_radius          = 108000.0,
+   allow_obs_below_vol         = .false.
+   /
+
+&location_nml
+   horiz_dist_only                 = .false.,
+   vert_normalization_pressure     = 6666666.7,
+   vert_normalization_height       = 5000000.0,
+   vert_normalization_level        = 2666.7,
+   vert_normalization_scale_height = 177.0,
+   approximate_distance            = .false.,
+   nlon                            = 71,
+   nlat                            = 36,
+   output_box_info                 = .false.,
+   /
+
+# layout = 2 spreads the I/O tasks over the nodes; tasks_per_node must match the filter step's
+# ranks per node (16 in the gate job and in the step 13 plan).
+&ensemble_manager_nml
+   layout         = 2,
+   tasks_per_node = 16
+   /
+
+&state_vector_io_nml
+   single_precision_output = .true.,
+   /
+
+&obs_def_gps_nml
+   max_gpsro_obs = 100000,
+   /
+
+&obs_def_tpw_nml
+   /
+
+# Radar operator (obs_expansion.md Sec. 8.3, 2026-10-14). microphysics_type = 5: H(x) is REFL_10CM
+# from the state (Thompson's own diagnostic, as HRRRDAS's if_model_dbz); if it can't be
+# interpolated the obs fails (no silent fallback to the Lin-type formula of types 1/2).
+# apply_ref_limit_to_fwd_op: H(x) below -10 dBZ is set to -10 dBZ, the value of the clear-air obs
+# (HRRRDAS's floor). The obs themselves are already floored by the converter. Used only by the
+# MRMS pass; kept the same in both files.
+&obs_def_radar_mod_nml
+   apply_ref_limit_to_obs     = .false.,
+   reflectivity_limit_obs     = -10.0,
+   lowest_reflectivity_obs    = -10.0,
+   apply_ref_limit_to_fwd_op  = .true.,
+   reflectivity_limit_fwd_op  = -10.0,
+   lowest_reflectivity_fwd_op = -10.0,
+   max_radial_vel_obs         = 1000000,
+   allow_wet_graupel          = .false.,
+   microphysics_type          = 5,
+   allow_dbztowt_conv         = .false.,
+   dielectric_factor          = 0.224,
+   n0_rain                    = 8.0e6,
+   n0_graupel                 = 4.0e6,
+   n0_snow                    = 3.0e6,
+   rho_rain                   = 1000.0,
+   rho_graupel                = 400.0,
+   rho_snow                   = 100.0,
+   /

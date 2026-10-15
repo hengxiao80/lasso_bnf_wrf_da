@@ -2,12 +2,14 @@
 
 Usage: .venv/bin/python scripts/da/check_cycle.py <output/YYYYMMDDHHMM> [--nmem 5]
 
-Prints, if the cycle had an analysis (filter/ exists):
+Prints, if the cycle had an analysis (filter/ exists), for the first pass and, in a two-pass run
+(filter_mrms/ exists), again for the MRMS pass (each pass's UPDATE variables are read from the
+input.nml saved with it, so one-pass, two-pass and one-pass MRMS runs are all covered):
   - per observation type the DART QC counts and prior/posterior statistics (check_filter_gate.py obs);
   - mean increment, prior spread and updated prior inflation (check_filter_gate.py stages);
   - that postassim_priorinf_* (passed to the next cycle) equals output_priorinf_* on the UPDATE
     variables, the only ones output_priorinf_* holds;
-  - per member, analysis - prior of the DART-facing files and the insert log.
+  - per member, analysis - prior of the DART-facing files (after both passes) and the insert log.
 For every member: the segment's end (SUCCESS COMPLETE WRF), CFL line count, and the domain-mean
 |dpsfc/dt| from diag_print over minutes 0-1, 1-5 and 5-15 of the segment (step 1 skipped on a
 restart, where diag_print compares with an uninitialized previous PSFC).
@@ -18,6 +20,7 @@ mismatch, or on a missing file; the cycle is then not marked complete.
 import argparse
 import glob
 import os
+import re
 import sys
 
 import netCDF4
@@ -26,7 +29,8 @@ import numpy as np
 from check_filter_gate import STATE, diff_report, obs_report, stages
 from restart_increment_test import diag_series
 
-UPDATE = ["U", "V", "PH", "THM", "MU", "QVAPOR"]
+HYDRO = ["QCLOUD", "QRAIN", "QSNOW", "QGRAUP", "REFL_10CM"]
+STATE_ALL = STATE + HYDRO
 problems = []
 
 
@@ -37,12 +41,20 @@ def nan_check(path, names):
                 problems.append(f"NaN in {n} of {path}")
 
 
-def inflation_check(fdir):
+def update_vars(nml):
+    """Names flagged UPDATE in &model_nml wrf_state_variables of a saved input.nml."""
+    text = open(nml).read()
+    block = re.search(r"wrf_state_variables\s*=(.*?)wrf_state_bounds", text, re.S).group(1)
+    rows = re.findall(r"'(\w+)',\s*'(\w+)',\s*'(\w+)',\s*'(\w+)',\s*'(\w+)'", block)
+    return [r[0] for r in rows if r[3] == "UPDATE"]
+
+
+def inflation_check(fdir, update):
     for s in ("mean", "sd"):
         a = os.path.join(fdir, f"postassim_priorinf_{s}.nc")
         b = os.path.join(fdir, f"output_priorinf_{s}.nc")
         with netCDF4.Dataset(a) as pa, netCDF4.Dataset(b) as ou:
-            for n in UPDATE:
+            for n in update:
                 d = np.abs(np.asarray(pa[n][:], np.float64) - np.asarray(ou[n][:], np.float64)).max()
                 if d != 0:
                     problems.append(f"postassim vs output prior inflation {s} differ in {n}: max {d:.3g}")
@@ -78,15 +90,28 @@ def main():
     out = args.out
     fdir = os.path.join(out, "filter")
     analysis = os.path.exists(os.path.join(fdir, "obs_seq.final"))
-    print(f"cycle {os.path.basename(os.path.normpath(out))}: analysis {'yes' if analysis else 'no (cold start)'}")
+    mdir_ = os.path.join(out, "filter_mrms")
+    two_pass = os.path.isdir(mdir_)
+    print(f"cycle {os.path.basename(os.path.normpath(out))}: analysis "
+          + ("no (cold start)" if not analysis else "yes, two passes" if two_pass else "yes"))
 
-    if analysis:
-        print(f"inflation from {open(os.path.join(fdir, 'inflation_source.txt')).read().strip()}\n")
-        obs_report(os.path.join(fdir, "obs_seq.final"))
+    passes = [("first pass", fdir)] + ([("MRMS pass", mdir_)] if two_pass else [])
+    updated = []
+    for name, d in passes if analysis else []:
+        print(f"\n===== {name} ({d})")
+        if not os.path.exists(os.path.join(d, "obs_seq.final")):
+            problems.append(f"no {d}/obs_seq.final"); continue
+        update = update_vars(os.path.join(d, "input.nml"))
+        updated += [n for n in update if n not in updated]
+        print(f"UPDATE variables: {' '.join(update)}")
+        print(f"inflation from {open(os.path.join(d, 'inflation_source.txt')).read().strip()}\n")
+        obs_report(os.path.join(d, "obs_seq.final"))
         print()
-        stages(fdir)
-        nan_check(os.path.join(fdir, "postassim_mean.nc"), STATE)
-        inflation_check(fdir)
+        stages(d, STATE_ALL)
+        nan_check(os.path.join(d, "postassim_mean.nc"), STATE_ALL)
+        if os.path.exists(os.path.join(d, "postassim_priorinf_mean.nc")):
+            inflation_check(d, update)
+    if analysis:
         print("\nanalysis - prior per member (DART-facing files; T is not in the state):")
         for m in range(1, args.nmem + 1):
             mdir = os.path.join(out, f"mem{m:03d}")
@@ -96,9 +121,9 @@ def main():
                     problems.append(f"no {f}")
             if os.path.exists(prior) and os.path.exists(anal):
                 print(f"member {m}:")
-                diff_report(prior, anal, UPDATE, "")
-                nan_check(prior, STATE)
-                nan_check(anal, STATE)
+                diff_report(prior, anal, updated + ["QNRAIN"], "")
+                nan_check(prior, STATE_ALL + ["QNRAIN"])
+                nan_check(anal, STATE_ALL + ["QNRAIN"])
             log = os.path.join(mdir, "insert.log")
             if os.path.exists(log):
                 print("".join(f"   insert: {l}" for l in open(log)), end="")

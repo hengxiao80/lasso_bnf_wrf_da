@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build one cycle's obs_seq.out from the hourly converted MADIS files (pilot step 10).
 #
-# Usage: [OBS_NAME=_x] [MESONET=a_calmkeep] make_cycle_obs.sh <YYYYMMDDHHMM> [out_root]
+# Usage: [OBS_NAME=_x] [MESONET=a_calmkeep] [MRMS=hrrrdas] make_cycle_obs.sh <YYYYMMDDHHMM> [out_root]
 #
 # <YYYYMMDDHHMM> is the analysis time t. Output in <out_root>/<YYYYMMDDHHMM>/ (default
 # ${OBS_DIR} = ${EXP_DIR}/obs${OBS_NAME}): obs_seq.out, counts.window (per type after the time slice, per family) and
@@ -22,6 +22,15 @@
 #    checks surface elevation against the model terrain, applies the pressure/height top and
 #    inflates errors near the boundary. It needs wrfinput_d01 for the grid and terrain; the hourly
 #    mean wrfinput is used (static fields only).
+# 3. MRMS reflectivity (MRMS != none, experiment.sh): mrms_to_obs_seq.py writes <t>/obs_seq.mrms,
+#    the obs of filter's second (radar) pass (two-pass cycle, obs_expansion.md Sec. 8.4). It is
+#    not merged into obs_seq.out and does not go through wrf_dart_obs_preprocess (which has no
+#    radar family); the converter applies the same boundary trim and error inflation itself and
+#    checks that the MRMS time is in the window. The MRMS files come from download_mrms.sh
+#    (login node). counts.mrms: per type.
+#    Also <t>/obs_seq.joint: obs_seq.out and obs_seq.mrms merged by obs_sequence_tool (time order,
+#    no duplicate-location test; the copy/QC names differ and are declared synonymous), the input of
+#    a one-pass run (MRMS_FILTER = one_pass).
 # Needs the scripts/env_wrf.sh modules (netCDF libraries).
 set -eu
 
@@ -45,6 +54,11 @@ read -r first_day first_sec <<< "$(dart_time $(( t_epoch - HALF + 1 )))"
 read -r last_day last_sec <<< "$(dart_time $(( t_epoch + HALF )))"
 
 obs_settings="mesonet=${MESONET}"
+[ "${MRMS}" = none ] || obs_settings="${obs_settings} mrms=${MRMS}"   # sets without MRMS keep their line
+case ${MRMS} in
+   none|hrrrdas) ;;
+   *) echo "make_cycle_obs.sh: unknown MRMS=${MRMS} (none, hrrrdas)" >&2; exit 1 ;;
+esac
 if [ -f "${out_root}/obs_settings.txt" ]; then
    grep -qx "${obs_settings}" "${out_root}/obs_settings.txt" || {
       echo "make_cycle_obs.sh: ${out_root} holds $(cat "${out_root}/obs_settings.txt"), not ${obs_settings}" >&2; exit 1; }
@@ -145,4 +159,44 @@ EOF
 "${DART_WRF_WORK}/obs_sequence_tool" < /dev/null > "${out}/counts.log" 2>&1
 awk '/Starting to process input sequence file/{o=1} /Starting to process output/{o=0} o && / obs$/{print $1, $2}' \
    "${out}/counts.log" > "${out}/counts.out"
+
+# --- 3. MRMS reflectivity (second filter pass) ------------------------------------------
+if [ "${MRMS}" = hrrrdas ]; then
+   "${PROJECT_DIR}/.venv/bin/python" "${SCRIPT_DIR}/mrms_to_obs_seq.py" "${CASE_DIR}/obs/mrms" "${stamp}" \
+      "${CASE_DIR}/geog/geo_em.d01.nc" "${out}/obs_seq.mrms" > "${out}/mrms.log" 2>&1 || {
+      echo "make_cycle_obs.sh: mrms_to_obs_seq.py failed for ${stamp}, see ${out}/mrms.log" >&2; exit 1; }
+   awk '/^ *[0-9]+$/ && p == "kind" {n[$1]++} {p = $1}
+        END {print "RADAR_REFLECTIVITY", n[1] + 0; print "RADAR_CLEARAIR_REFLECTIVITY", n[2] + 0}' \
+      "${out}/obs_seq.mrms" > "${out}/counts.mrms"
+   cd "${out}/slice"
+   cat > input.nml << EOF
+&obs_sequence_tool_nml
+   filename_seq         = '../obs_seq.out', '../obs_seq.mrms',
+   filename_out         = '../obs_seq.joint',
+   gregorian_cal        = .true.,
+   synonymous_copy_list = 'NCEP BUFR observation', 'MRMS observation',
+   synonymous_qc_list   = 'NCEP QC index', 'Data QC',
+/
+&obs_sequence_nml
+   write_binary_obs_sequence = .false.,
+/
+&utilities_nml
+   termlevel = 1, logfilename = 'dart_log.out', nmlfilename = 'dart_log.nml', write_nml = 'file',
+/
+&obs_kind_nml
+/
+&location_nml
+/
+&obs_def_radar_mod_nml
+/
+EOF
+   "${DART_WRF_WORK}/obs_sequence_tool" < /dev/null > "${out}/joint.log" 2>&1 || true
+   grep -q 'obs_sequence_tool Finished successfully' "${out}/joint.log" || {
+      echo "make_cycle_obs.sh: merging obs_seq.out and obs_seq.mrms failed for ${stamp}, see ${out}/joint.log" >&2; exit 1; }
+   n_joint=$(awk '/num_obs:/{print $2; exit}' "${out}/obs_seq.joint")
+   n_sum=$(( $(awk '{n += $2} END {print n + 0}' "${out}/counts.out") + $(awk '{n += $2} END {print n + 0}' "${out}/counts.mrms") ))
+   [ "${n_joint}" -eq "${n_sum}" ] || {
+      echo "make_cycle_obs.sh: obs_seq.joint has ${n_joint} obs, not ${n_sum}" >&2; exit 1; }
+   echo "make_cycle_obs.sh: ${stamp}: MRMS $(awk '{n += $2} END {print n + 0}' "${out}/counts.mrms") obs ($(grep 'MRMS valid' "${out}/mrms.log" | sed 's/.*MRMS valid \([^,]*\),.*/\1/'))"
+fi
 echo "make_cycle_obs.sh: ${stamp}: window $(awk '$NF ~ /^[0-9]+$/ && NF == 3 {n += $3} END {print n + 0}' "${out}/counts.window"), screened $(awk '{n += $2} END {print n + 0}' "${out}/counts.out") obs"

@@ -47,7 +47,13 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   Radiosonde and ACARS errors are still DART's. Observation-expansion work (HRRRDAS inventory, error comparison, radar plans): `notes/obs_expansion.md`.
 - **Mesonet** (2026-10-13/14): per-cycle selection and conversion (`scripts/da/make_cycle_mesonet.sh`, `select_mesonet_cycle.py`; options a / b1 / c, a first; list files and reference systems in `notes/mesonet_station_selection.md`). **Wired in** 2026-10-14: `MESONET` and `OBS_NAME` in `experiment.sh` (observation set `obs${OBS_NAME}/`), `LAND_SFC_*` in `input.nml.filter`; mesonet sites within 4 km of a same-window METAR are dropped because `wrf_dart_obs_preprocess`'s duplicate-location test is a ~2-km test under `r8 = r4` (`notes/obs_expansion.md` Sec. 7.2).
 - **MRMS reflectivity** (2026-10-14, `notes/obs_expansion.md` Sec. 8): `scripts/da/mrms_to_obs_seq.py` (Python port of HRRR's
-  MRMS→DART program, HRRRDAS settings) tested on 00:15; not wired into the cycle (state, `input.nml.filter`, obs merge still to do).
+  MRMS→DART program, HRRRDAS settings; also the preprocessor's boundary trim and error inflation). **Wired in (built
+  2026-10-14, not run) as a second filter pass, as HRRRDAS:** `MRMS=hrrrdas` in `experiment.sh` adds `<t>/obs_seq.mrms` to
+  an observation set (`obs_madis_mrms/`, `obs_meso_a_calmkeep_mrms/`), and a run on such a set runs filter twice per
+  cycle (`config/input.nml.filter`, then `config/input.nml.filter_mrms`), then `wrfrst_dart.py qnrain`. `MRMS_INFLATION`
+  (pass1 | both) has no default: undecided. Alternative per run, `MRMS_FILTER=one_pass` (no default either): one filter
+  on `<t>/obs_seq.joint` with `config/input.nml.filter_joint` and the impact table `config/obs_impact_joint.txt`.
+  Design and open items: `notes/obs_expansion.md` Sec. 8.4–8.5.
   **WRF is patched** so `REFL_10CM` is in `wrfrst` (`patches/wrf_06d4240a_refl_10cm_restart.patch`, rebuilt and tested
   2026-10-14; old executables kept as `main/*.exe.pre_refl_restart`). Restart files written before then lack `REFL_10CM`.
 - Not started: DART `model_mod_check` smoke test (deferred by the user), moist/dry theta

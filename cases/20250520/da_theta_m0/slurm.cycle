@@ -6,6 +6,10 @@
 #   sbatch slurm.cycle 202505200000 202505200100       (1-hour pilot: cold start + 4 analyses)
 #   RUN_NAME=_hph sbatch slurm.cycle ...                    (run_hph/, output_hph/; hydrostatic PH is the
 #                                                            default since 2026-10-03, HYDROSTATIC_PH=0 for DART's)
+#   OBS_NAME=_madis_mrms MRMS_FILTER=two_pass MRMS_INFLATION=pass1 RUN_NAME=... sbatch slurm.cycle ...
+#   OBS_NAME=_madis_mrms MRMS_FILTER=one_pass RUN_NAME=... sbatch slurm.cycle ...
+#                                                           (observation set with MRMS: two filter passes per
+#                                                            cycle, or one with both families; no defaults)
 #SBATCH --job-name=cyc520
 #SBATCH -A cli120
 #SBATCH --partition=batch_all

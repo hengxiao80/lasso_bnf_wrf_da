@@ -259,9 +259,9 @@ Family 2 of §6. Following HRRRDAS (§1: preprocessing, separate 18-km EnKF pass
 
 ### 8.2 Port to Python, first file (steps 2–4)
 
-**Port, not build (assumption made 2026-10-14, for the user to confirm):** building needs NCEPLIBS bufr/g2/w3 (not on Cirrus) and ≥ 33 MPI ranks, writes BUFR and netCDF we don't use, and fixes the obs time to the hour. `scripts/da/mrms_to_obs_seq.py MRMS_DIR YYYYMMDDHHMM GEO_EM OUT [--grid-nc FILE]` reproduces the Fortran (GRIB2 path, HRRRDAS namelist as defaults, all overridable) with two differences: obs time = MRMS valid time, and HRRRDAS's minute rule for picking the file set done with real date arithmetic. Longitudes are written in [0, 2π), as the Fortran does. Reads GRIB2 with `eccodes` + `eccodeslib` (added to the uv environment). ~15 s per time on a login node.
+**Port, not build (confirmed by the user 2026-10-14):** building needs NCEPLIBS bufr/g2/w3 (not on Cirrus) and ≥ 33 MPI ranks, writes BUFR and netCDF we don't use, and fixes the obs time to the hour. `scripts/da/mrms_to_obs_seq.py MRMS_DIR YYYYMMDDHHMM GEO_EM OUT [--grid-nc FILE]` reproduces the Fortran (GRIB2 path, HRRRDAS namelist as defaults, all overridable) with two differences: obs time = MRMS valid time, and HRRRDAS's minute rule for picking the file set done with real date arithmetic. Longitudes are written in [0, 2π), as the Fortran does. Reads GRIB2 with `eccodes` + `eccodeslib` (added to the uv environment). ~15 s per time on a login node.
 
-- **Data** (2026-10-14): `obs/mrms/20250520/`, the 33 `MergedReflectivityQC_XX.XX` levels at 00:14:38 (all levels share the time), 28 MB, from `https://noaa-mrms-pds.s3.amazonaws.com/CONUS/MergedReflectivityQC_XX.XX/20250520/`. Files are at irregular seconds about every 2 min (00:12:38, 00:14:38, 00:16:39, ...). GRIB2: 7000 × 3500, 0.01°, rows north → south from 54.995 N, 230.005–299.995 E, PNG packing; −999 No Coverage, −99 Missing (= covered, no echo; §8.1).
+- **Data** (2026-10-14): `obs/mrms/20250520/`, the 33 `MergedReflectivityQC_XX.XX` levels at 00:14:38, 00:30:40, 00:44:42 and 01:00:38 (all levels of a set share the time; `scripts/da/download_mrms.sh <t>`, HRRRDAS's minute rule; each inside its cycle window), 28 MB per set, from `https://noaa-mrms-pds.s3.amazonaws.com/CONUS/MergedReflectivityQC_XX.XX/20250520/`. Files are at irregular seconds about every 2 min (00:12:38, 00:14:38, 00:16:39, ...). GRIB2: 7000 × 3500, 0.01°, rows north → south from 54.995 N, 230.005–299.995 E, PNG packing; −999 No Coverage, −99 Missing (= covered, no echo; §8.1).
 - **Test time 2025-05-20 00:15** (first pilot analysis; convection is active over the domain all day on 05-20 in the `theta_m0` run: 10–25 % of columns ≥ 10 dBZ). Output `obs/obs_seq_mrms/obs_seq.mrms.2025052000_15` and the gridded field `mrms_grid.2025052000_15.nc`; figures `figures/mrms/mrms_obs_2025052000_15.png` (MRMS composite on the grid, `theta_m0` column max at 00:15, 4-km obs; the clear-air markers there are drawn larger than a grid point and the precipitation obs as single pixels, so it overstates the clear-air obs) and `figures/mrms/mrms_obs_zoom_4km_2025052000_15.png` (80 × 60-point zoom at 4 km: precipitation obs every 2nd point inside ≥ 10 dBZ, a no-ob band at 0–10 dBZ, clear-air obs about every 6th point elsewhere, a few at echo edges).
 - **Counts:** 88,155 obs = 79,075 `RADAR_REFLECTIVITY` + 9,080 `RADAR_CLEARAIR_REFLECTIVITY` (4.0 km 4,633, 8.5 km 4,447). Before thinning 882,834 precipitation and 3,887,460 clear-air candidates. Precipitation obs per level (0.5 → 11 km): 1,153, 4,705, 6,352, 8,193, 11,413, 13,131, 13,469, 12,478, 8,181. DART's `obs_sequence_tool` (same build as `filter`) reads the file: both types recognised, all at 2025-05-20 00:14:38.
 - **Coverage:** no MRMS coverage over 69 % of the domain at 0.5 km, 26 % at 1.0 km, 2 % at 2.0 km, none above 2.75 km, so few low-level obs. ≥ 10 dBZ on 12–24 % of the domain at 2–9 km (much of it the trailing stratiform/anvil of the NW line); 0–10 dBZ (unused) 1–6 %. Precipitation obs: median 26 dBZ at 0.5 km falling to 14 dBZ at 11 km, maxima 50–63 dBZ.
@@ -270,11 +270,121 @@ Family 2 of §6. Following HRRRDAS (§1: preprocessing, separate 18-km EnKF pass
 
 ### 8.3 Found while checking our `filter` setup
 
-- `input.nml.filter` has `microphysics_type = 2` (DART default). `get_expected_radar_ref` first tries `QTY_RADAR_REFLECTIVITY` from the state whatever the setting; when that fails, 1/2 fall back to a Lin-type calculation from qr/qs/qg (not Thompson-consistent), while 3/5 stop with a message. With `REFL_10CM` in the state it must be **5**, so a missing field can't pass silently.
+- **Set 2026-10-14 (both filter namelists, Sec. 8.4): `microphysics_type = 5` and the −10 dBZ forward-operator floor below.** Before: `input.nml.filter` had `microphysics_type = 2` (DART default). `get_expected_radar_ref` first tries `QTY_RADAR_REFLECTIVITY` from the state whatever the setting; when that fails, 1/2 fall back to a Lin-type calculation from qr/qs/qg (not Thompson-consistent), while 3/5 stop with a message. With `REFL_10CM` in the state it must be **5**, so a missing field can't pass silently.
 - **Clear-air floor (checked 2026-10-14).** Thompson floors `REFL_10CM` at −35 dBZ (`refl_10cm = MAX(-35., dBZ)`; `module_mp_thompson.F:1465` in HRRR's WRF (`sorc/hrrr_wrfarw.fd/WRFV3.9`), `:1461` in ours), so clear model air is −35 dBZ. HRRR and HRRRDAS run aerosol-aware Thompson, `mp_physics = 28` with `do_radar_ref = 1` (`parm/conus/hrrr_wrf.nl:107,109`, `parm/hrrrdas/hrrrdas_wrf.nl:100,103`; package `thompsonaero` → `mp_gt_driver`), the same scheme as our runs (`namelist.input.wrf`: `mp_physics = 28`). HRRRDAS's GSI observer (`hrrrdas_gsiparm.anl`: `if_model_dbz = .true.`, `static_gsi_nopcp_dbz = -10.0`, `miter = 0`) **floors H(x) at −10 dBZ** for each member and the mean (`setupdbz.f90:436–442`, applied when `miter == 0`, i.e. EnKF runs) and floors the obs at −10 too (`read_dbz_nc.f90:372–375`; MRMS clear-air obs are −10 already, precipitation obs ≥ 10). Effects: a clear-air ob (−10) at a point where every member is clear (−35 → −10) has zero innovation and zero H(x) spread, so it does nothing; it acts only where some members have echo above −10 dBZ, pulling them down (spurious-convection suppression). A precipitation ob where all members are clear has zero H(x) spread, so it does nothing either; where some are clear, those count as −10, not −35, which keeps innovations and spread from being inflated by the model's arbitrary −35 floor. Other settings: `missing_to_nopcp = .false.` (MRMS No Coverage stays unused), `ens_hx_dbz_cut` default `.false.` (no 60-dBZ cap on H(x)), `radar_no_thinning = .true.` (thinning only in the prep program). **DART equivalent:** `- `apply_ref_limit_to_fwd_op = .false.`: `REFL_10CM` goes down to −35 dBZ in clear air, while the clear-air obs are −10 dBZ. To decide with the localization/impact settings (step 6).obs_def_radar_mod_nml` `apply_ref_limit_to_fwd_op = .true.`, `reflectivity_limit_fwd_op = -10.0`, `lowest_reflectivity_fwd_op = -10.0` (`where (ref < limit) ref = lowest`, `obs_def_radar_mod.f90`, after the state interpolation of `REFL_10CM`); now `.false.`. Proposed for step 6.
 - DART's `grid_refl_obs` (built) is not a converter: it maps reflectivity obs from an `obs_seq` onto WRF grid points (for `add_pert_where_high_refl`).
 
-### 8.4 Next (steps 5–6, none started)
+### 8.4 Into the cycle: two-pass filter (built 2026-10-14, not run; `MRMS_FILTER=two_pass`; one-pass alternative in Sec. 8.5)
+
+**Decisions (user, 2026-10-14):** port, not build (Sec. 8.2); HRRRDAS's analysis variables; the converter copies the
+preprocessor's boundary trim and error inflation; **two filter passes per cycle, as HRRRDAS**; QNRAIN by Thompson's
+1-mm rule (all three rules below); the spread check of `REFL_10CM` and the hydrometeors counts as a run. Open:
+inflation in the second pass (user researching); `outlier_threshold` for radar obs.
+
+**How HRRRDAS does it** (Dowell 2020 pp. 5–6; `scripts/hrrrdas/exhrrr_analysis.sh`, `exhrrr_enkf.sh`, `../software/HRRR`
+@ 40ee6058):
+1. GSI observer, once per member and for the mean, **on the background**: writes `diag_conv_ges` and `diag_radardbz_ges`
+   (H(x) for reflectivity = background `REFL_10CM`, `if_model_dbz`). The same step clears clouds and hydrometeors
+   from GOES cloud top, METAR and MRMS (as in HRRRv4); we have no equivalent.
+2. EnKF, conventional obs: 300 km / 0.5 scale height; analysis variables U, V, T, QVAPOR, QCLOUD; RTPS 1.20 (15 km) /
+   1.08 (3 km). Writes the members in place (`analysis.memNNN` and `firstguess.memNNN` are both links to the member file).
+3. EnKF, reflectivity (3-km domain only): 18 km / 0.5 scale height; U, V, T, QVAPOR, QCLOUD, QRAIN, QSNOW, QGRAUPEL;
+   RTPS 1.08. **Its H(x) are the diag files of step 1**, so the radar pass regresses the conventional analysis on
+   background-reflectivity priors; reflectivity is never updated (GSI's EnKF can read/write `REFL_10CM` if `dbz` is in
+   `anavinfo`, but Dowell's variable list has no reflectivity). (Aside: `exhrrr_enkf.sh` links the radar pass's
+   `diag_conv_ges.ensmean` to `diag_radardbz_ges...mem${ensmemid}`, where `${ensmemid}` is left over from the loop
+   above, i.e. a member's file, not the mean's.)
+4. QNRAIN, not analysed ("EnKF analysis of rain number concentration (QNRAIN) did not benefit the forecasts"), is set
+   from the analysed QRAIN "according to a Marshall-Palmer type exponential distribution"; QNCLOUD could be too but isn't.
+   This step's code is not in the public repo (QNRAIN appears only in I/O, averaging, boundary and post code).
+
+**Ours** (`slurm.cycle` → `driver.sh` → `cycle_job.sh`; a run is two-pass when its observation set has MRMS, i.e.
+`mrms=` in `obs_settings.txt`, `cycle_lib.sh two_pass`):
+- **Observations.** `MRMS=hrrrdas` (`experiment.sh`) makes `make_cycle_obs.sh` also write `<t>/obs_seq.mrms` with
+  `mrms_to_obs_seq.py` (and `counts.mrms`, `mrms.log`); not merged into `obs_seq.out`. The converter (2026-10-14
+  additions): `--obs-boundary 5` (the preprocessor's test on the 1-based x = i + 1: kept if 6 ≤ x ≤ nx − 6, so 5 rows
+  dropped on the west/south sides and 6 on the east/north), `--obsdistbdy 15 --maxobsfac 2.5` (error sd × (2.607 − 0.107 d),
+  d = distance to the edge in points, up to 15), both after thinning; `--window-half 450` (fails if the MRMS time is
+  outside (t − 450 s, t + 450 s]); reads `YYYYMMDD/` subdirectories so the minute fallback can cross midnight.
+  Set **`obs_madis_mrms/`** built for 00:15–01:00 (`mesonet=none mrms=hrrrdas`): `obs_seq.out` byte-identical to
+  `obs_madis/`'s; MRMS (precipitation + clear air) 76,962 + 8,589 (00:15), 79,111 + 8,496 (00:30), 80,182 + 8,493 (00:45),
+  80,507 + 8,398 (01:00); boundary zone: 2,600–2,720 dropped and 6,460–6,870 with inflated errors per cycle.
+- **State.** `prep_filter.sh` extracts `QCLOUD QRAIN QSNOW QGRAUP REFL_10CM QNRAIN` too (`DART_EXTRA`, all runs).
+  Pass 1 (`input.nml.filter`): QCLOUD `UPDATE`; QRAIN, QSNOW, QGRAUP, `REFL_10CM` `NO_COPY_BACK`. Pass 2
+  (`input.nml.filter_mrms`, same variables): U V THM QVAPOR QCLOUD QRAIN QSNOW QGRAUP `UPDATE`; PH, MU, W, `REFL_10CM`
+  `NO_COPY_BACK`. As in HRRRDAS, pass 2's H(x) is the background `REFL_10CM`: pass 1 doesn't write it back. QICE,
+  QNICE, QNRAIN are not in the state. Same variables in both passes so their inflation files fit each other.
+- **Localization of pass 2:** `cutoff = 0.001413` (18 km zero), `vert_normalization_scale_height = 177.0` (zero at 0.5
+  scale height).
+- **Flow per cycle:** extract → filter pass 1 in `run/filter/` → save to `output/<t>/filter/` → filter pass 2 in
+  `run/filter_mrms/` on the same member files → save to `output/<t>/filter_mrms/` → `filter.done` → per member
+  `wrfrst_dart.py qnrain` → `insert --fields U V PH THM MU QVAPOR QCLOUD QRAIN QSNOW QGRAUP QNRAIN` (hydrostatic PH
+  from the saved prior, i.e. both passes' MU/THM/QVAPOR changes) → boundary refit → advance. A failure before
+  `filter.done` reruns both passes from the extraction. `check_cycle.py` reports both passes.
+- **Inflation (`MRMS_INFLATION`, no default; `driver.sh` refuses a two-pass run without it and records it in
+  `settings.txt`):** `pass1` = adaptive prior inflation only in pass 1, carried cycle to cycle as now; pass 2 has
+  `inf_flavor = 0`. `both` = pass 2 starts from pass 1's `postassim_priorinf_*`, inflates and updates it; the next cycle's
+  pass 1 starts from pass 2's. **`MRMS_PASS2_DAMPING`** (user, 2026-10-15; `both` only): 1 (default) = pass 2 damps with
+  `INF_DAMPING` too, so the inflation is damped twice per cycle (effectively `INF_DAMPING`² per cycle); 0 = `inf_damping
+  = 1.0` in pass 2, damped once per cycle. Recorded in `settings.txt`. DART's prior
+  inflation acts on the whole state, so under `both` the pass-1 analysis is inflated a second time everywhere the
+  inflation exceeds 1, not only near radar obs. HRRRDAS has no prior inflation, only RTPS after each pass.
+- **QNRAIN** (`wrfrst_dart.py qnrain`, after pass 2, where QRAIN differs from the prior). What Thompson does
+  (`phys/module_mp_thompson.F`, our WRF): rain is exponential (`mu_r = 0`); in `mp_thompson`, rain with no number
+  (`nr <= R2`) gets one from a median volume diameter of 1 mm, λ = (3 + μ_r + 0.672) / D₀; every step the diameter is
+  then clipped to 37.5 µm–2.5 mm (rescaling nr); otherwise nr is kept, so a changed qr with the old nr changes the mean
+  drop size by (qr_a / qr_b)^(1/3) (and is clipped if it leaves the range). Number per kg:
+  nr = crg(2)/crg(3) · qr · λ³ / am_r = qr · λ³ / (π ρ_w), no air density needed. Three rules:
+  1. **Thompson's 1-mm rule (used, user 2026-10-14):** λ = 3672 m⁻¹, nr = 1.576e7 · qr; nr = 0 where qr ≤ R1 = 1e-12.
+  2. **Fixed intercept, Marshall–Palmer** (the literal reading of Dowell 2020): N0 = 8e6 m⁻⁴, λ = (π ρ_w N0 / (ρ_air qr))^(1/4),
+     nr = N0 / (λ ρ_air) per kg (needs ρ_air), then Thompson's clip.
+  3. **Keep the prior mean size:** nr_a = nr_b · qr_a / qr_b where qr_b > R1, rule 1 where the prior had no rain; then
+     Thompson's clip. Closest to the model's own state, not what HRRRDAS describes.
+  Tested 2026-10-14 on the pre-patch 00:15 restart of the step-7 test with a fake QRAIN change: diameter exactly 1 mm after;
+  rerunning changes nothing; the prior's median diameter at rain points is 0.89 mm (so rule 1 is close to the model's
+  sizes there); 15,609 points have nr > 0 with qr = 0 in the prior, left as they are.
+- **Open:** `outlier_threshold = 3` also applies to radar obs (discussion log, 2026-10-14 entry); look at the QC counts
+  of the first MRMS cycle. Clear-air obs at echo edges (Sec. 8.2). Filter cost: ~85–89k radar obs per cycle; check
+  time and memory with a one-cycle filter-only test before a full run (needs a job).
+
+### 8.5 One-pass alternative (built 2026-10-14, not run; asked for by the user)
+
+A second way to take MRMS, chosen per run: **`MRMS_FILTER=one_pass`** (vs `two_pass`, Sec. 8.4; no default,
+`driver.sh` requires one in a run on an MRMS observation set and records it in `settings.txt`).
+
+- **Observations:** `make_cycle_obs.sh` (MRMS set) also writes `<t>/obs_seq.joint`, `obs_seq.out` + `obs_seq.mrms`
+  merged by `obs_sequence_tool` (time order; the copy/QC names differ, "NCEP BUFR observation"/"NCEP QC index" vs
+  "MRMS observation"/"Data QC", declared synonymous; the output keeps the first file's). The count is checked
+  (= screened conventional + MRMS). `obs_sequence_tool` has no duplicate-location test, so the `r8 = r4` problem
+  (Sec. 7.2) doesn't arise. Its `input.nml` needs an (empty) `&obs_def_radar_mod_nml` once radar obs are read.
+  Built 2026-10-14 for 00:15–01:00 in both MRMS sets: `obs_madis_mrms` 88,332 / 91,099 / 91,733 / 93,756 obs per cycle,
+  `obs_meso_a_calmkeep_mrms` 93,094 / 95,770 / 96,303 / 98,688; the conventional `obs_seq.out` of both still
+  byte-identical to `obs_madis/` and `obs_meso_a_calmkeep/`.
+- **`config/input.nml.filter_joint`:** `input.nml.filter` plus the radar types in `assimilate_these_obs_types`;
+  QRAIN, QSNOW, QGRAUP `UPDATE`; `special_localization_obs_types`/`_cutoffs` = the radar types / 0.001413 (18 km);
+  `special_vert_normalization_*` for the radar types with scale height 177.0 (0.5 scale height) and the other three
+  at the defaults; `adjust_obs_impact = .true.` with `obs_impact_joint.txt`.
+- **`config/obs_impact_joint.txt`** (runtime format of DART's impact table: one "TYPE QTY factor" line per pair,
+  pairs not listed = 1, no comments or blank lines allowed by `read_impact_table`; written directly rather than with
+  `obs_impact_tool`, which isn't built in `models/wrf/work` and would need DART's `quickbuild.sh` edited; documented
+  in the namelist): 96 zeros, giving each family its pass's limits:
+  - radar types → `QTY_PRESSURE` (MU), `QTY_GEOPOTENTIAL_HEIGHT` (PH), `QTY_SURFACE_PRESSURE` (PSFC, altimeter
+    priors), `QTY_VERTICAL_VELOCITY` (W);
+  - each of the 22 assimilated conventional types → `QTY_RAINWATER_`, `QTY_SNOW_`, `QTY_GRAUPEL_MIXING_RATIO` and
+    `QTY_RADAR_REFLECTIVITY`. The last keeps the radar obs priors at their background values, as HRRRDAS's
+    radar H(x); setting it to 1 would let them follow the conventional update (more consistent with serial
+    filtering, unlike HRRRDAS).
+  The table applies to state variables and to the priors of other obs (`assim_tools_mod.f90`, `cov_and_impact_factors`
+  for both), by the quantity of each.
+- **Inflation:** the first pass's, one adaptive prior inflation (`INF_FLAVOR`, `INF_DAMPING`) damped once per cycle and
+  updated by both families. `MRMS_INFLATION` must be unset.
+- **Afterwards** as in two-pass runs: `qnrain`, insert with the hydrometeors (`post_filter.sh`, `has_mrms`).
+- **Differences from two_pass, i.e. what a comparison would test:** (1) order: DART processes the obs in time order, so
+  MRMS (one time, 00:14:38 etc.) is assimilated in the middle of the conventional obs rather than after them, and the
+  conventional obs after it see radar-updated priors (except the altimeters, by the table); (2) one inflation instead
+  of pass1/both; (3) everything else (localization, update limits, radar H(x) from the background) is the same.
+  Filter cost should be close to the two passes together, without the second pass's I/O.
+
+**Earlier notes, step 5 (`REFL_10CM` in the restart file):**
 
 5. State: `REFL_10CM` (`NO_COPY_BACK`) into the file `wrfrst_dart.py extract` builds from `wrfrst`. Checked 2026-10-14: `REFL_10CM` is not in `wrfrst` because its Registry I/O flags are `hdu` (history, nest down/up; `Registry.EM_COMMON:1611`), and runtime I/O (`iofields_filename`) accepts only the history (`h`) and input (`i`) streams (`frame/module_domain.F`, `modify_io_masks`), so putting it in the restart stream needs a **Registry patch (`hdu` → `hdur`) and a WRF rebuild** (option A). Thompson computes it only on `diag_flag` steps, i.e. steps where the history alarm rings (`solve_em.F:374–379`, `module_mp_thompson.F:1450`); our members write history every 15 min (`namelist.input.wrf`) at the same times as the restarts, so `wrfout` and a `wrfrst` with `REFL_10CM` at time t would hold the same array. Option B: `extract` reads `REFL_10CM` from the member's `wrfout` at t (no rebuild). **Decided (user, 2026-10-14): option A**, `patches/wrf_06d4240a_refl_10cm_restart.patch`, **applied and WRF rebuilt 2026-10-14** (old executables kept as `main/*.exe.pre_refl_restart`; `patches/README.md`). **Tested 2026-10-14 (job 1051956, all checks passed):** `REFL_10CM` in the new `wrfrst` is bit-identical to `wrfout` at the same time; nothing else changed against the pre-patch build (657 variables identical); restarting from a pre-patch `wrfrst` works and gives the same 00:30 state as from a new one (`patches/README.md`). Next in step 5: `wrfrst_dart.py extract --extra REFL_10CM` (and the hydrometeors), the state-variable list, `microphysics_type = 5`. Checked at the same time (2026-10-14) that nothing else DART reads comes from `wrfout`: the 12 pilot state fields come from `wrfrst` (`_2` level renamed by `extract`); the static grid fields and global attributes `model_mod` reads (XLAT/XLONG and U/V versions, HGT, PHB, MUB, P_TOP, ZNU, ZNW, DN, DNW, C1H, C2H, XLAND, ZS; MAP_PROJ, DX, DT, ...) come from filter's `wrfinput_d01` = `GRID_FILE`, the mean 00Z `wrfinput`, which has them all; the hydrometeors QCLOUD QRAIN QICE QSNOW QGRAUP QNICE QNRAIN are in `wrfrst` (`extract --extra`). `REFL_10CM` is the only field DART would need that is in neither; the hydrometeors (Q8). Check hydrometeor and `REFL_10CM` spread in the 5 members at 00:15 against these obs.
-6. Localization and impact: 18-km zero-influence (`special_localization_obs_types` `cutoff` ≈ 0.00141) and which state quantities reflectivity updates (`obs_impact_tool`), or a second `filter` call; RTPS. `microphysics_type = 5`, the forward-operator floor.

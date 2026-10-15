@@ -16,6 +16,22 @@ Python port of HRRR's sorc/hrrr_process_mosaic.fd/process_NSSL_mosaic_to_dart_an
     all others within +-skip grid points, so the spacing is skip+1 points;
   * heights are the MRMS level heights (m MSL), VERTISHEIGHT; error sd 5 dBZ.
 
+Added for our cycle (not in the Fortran), because these obs do not go through
+wrf_dart_obs_preprocess: the same lateral-boundary treatment that program gives the conventional
+obs (config/input.nml.obs_preprocess; decided by the user 2026-10-14):
+  * --obs-boundary (obs_boundary, 5): obs within that many points of the edge are dropped, with
+    the preprocessor's test on the 1-based mass-point position x = i + 1: kept if
+    obs_boundary + 1 <= x <= nx - obs_boundary - 1 (same in y), i.e. 5 points dropped on the west
+    and south sides and 6 on the east and north sides for obs_boundary = 5;
+  * --obsdistbdy / --maxobsfac (increase_bdy_error, 15, 2.5): within obsdistbdy points of the edge
+    (d = min(x - 1, y - 1, nx - x, ny - y)) the error sd is multiplied by
+    fac = maxobsfac + (maxobsfac - 1) / (obsdistbdy - 1) * (1 - d), from maxobsfac at d = 1 to 1 at
+    d = obsdistbdy (increase_obs_err_bdy). --obsdistbdy 0 turns it off.
+Thinning is done first, so the obs kept inside are those of the Fortran. The preprocessor finds x
+and y from the obs lat/lon through the map projection; here they are the exact grid indices.
+--window-half (450 s) makes the program fail if the MRMS valid time is outside the filter window
+(t - 450 s, t + 450 s] of the analysis time t.
+
 Differences from the Fortran: the obs time is the MRMS valid time (the Fortran writes the top of
 the hour), and the MRMS time is chosen with HRRRDAS's rule (the analysis minute, else 1, else 2
 minutes earlier, requiring all 33 levels) but with real date arithmetic (the script's fallback for
@@ -23,7 +39,8 @@ minute 00 is minute 59 of the same hour). Longitudes are written in [0, 2pi), as
 
 Usage:
   mrms_to_obs_seq.py MRMS_DIR YYYYMMDDHHMM GEO_EM OUT [--grid-nc FILE] [options]
-MRMS_DIR holds MRMS_MergedReflectivityQC_XX.XX_YYYYMMDD-HHMMSS.grib2.gz files.
+MRMS_DIR holds MRMS_MergedReflectivityQC_XX.XX_YYYYMMDD-HHMMSS.grib2.gz files, directly or in
+YYYYMMDD/ subdirectories (download_mrms.sh), so the fallback to an earlier minute can cross midnight.
 """
 import argparse
 import datetime as dt
@@ -48,7 +65,9 @@ def find_mrms_files(mrms_dir, t_anal):
     """HRRRDAS rule: all 33 levels at minute mm, else mm-1, else mm-2."""
     for back in (0, 1, 2):
         t = t_anal - dt.timedelta(minutes=back)
-        pat = os.path.join(mrms_dir, f'MRMS_MergedReflectivityQC_*_{t:%Y%m%d-%H%M}??.grib2*')
+        day_dir = os.path.join(mrms_dir, f'{t:%Y%m%d}')      # a root with YYYYMMDD/ subdirectories
+        pat = os.path.join(day_dir if os.path.isdir(day_dir) else mrms_dir,
+                           f'MRMS_MergedReflectivityQC_*_{t:%Y%m%d-%H%M}??.grib2*')
         files = sorted(glob.glob(pat))
         if len(files) == len(LEVELS_M):
             return files
@@ -115,8 +134,19 @@ def thin(mask, skip):
     return m
 
 
-def write_obs_seq(path, obs, t_obs, err_sd):
-    """obs: list of (kind_index 1|2, value, lat_deg, lon_deg, height_m), in output order."""
+def boundary_factor(j, i, nj, ni, obsdistbdy, maxobsfac):
+    """wrf_dart_obs_preprocess increase_obs_err_bdy: error-sd factor at 0-based mass point (j, i)."""
+    if obsdistbdy <= 0:
+        return 1.0
+    d = min(i, j, ni - 1 - i, nj - 1 - j)
+    if d > obsdistbdy:
+        return 1.0
+    mobse = (maxobsfac - 1.0) / (1.0 - obsdistbdy)
+    return mobse * d + maxobsfac - mobse
+
+
+def write_obs_seq(path, obs, t_obs):
+    """obs: list of (kind_index 1|2, value, lat_deg, lon_deg, height_m, error_sd), in output order."""
     days = (t_obs - dt.datetime(1601, 1, 1)).days
     secs = (t_obs - dt.datetime(t_obs.year, t_obs.month, t_obs.day)).seconds
     n = len(obs)
@@ -127,7 +157,7 @@ def write_obs_seq(path, obs, t_obs, err_sd):
         f.write(f'  num_obs: {n:12d}  max_num_obs: {n:12d}\n')
         f.write('MRMS observation\nData QC\n')
         f.write(f'  first: {min(n, 1):12d}  last: {n:12d}\n')
-        for k, (kind, val, la, lo, z) in enumerate(obs, start=1):
+        for k, (kind, val, la, lo, z, err_sd) in enumerate(obs, start=1):
             prev = k - 1 if k > 1 else -1
             nxt = k + 1 if k < n else -1
             f.write(f' OBS {k:12d}\n {val:.6f}\n 0.000000\n {prev:11d} {nxt:11d} {-1:11d}\n')
@@ -153,6 +183,13 @@ def main():
     p.add_argument('--clear-air-dbz-horiz-skip', type=int, default=5)
     p.add_argument('--clear-air-levels-m', default='4000,8500',
                    help='clear-air levels (HRRRDAS hard-codes levels 13 and 22 = 4.0, 8.5 km)')
+    p.add_argument('--obs-boundary', type=int, default=5,
+                   help='drop obs this close to the edge, as wrf_dart_obs_preprocess obs_boundary (0: off)')
+    p.add_argument('--obsdistbdy', type=float, default=15.0,
+                   help='inflate errors this close to the edge, as increase_bdy_error (0: off)')
+    p.add_argument('--maxobsfac', type=float, default=2.5)
+    p.add_argument('--window-half', type=int, default=450,
+                   help='fail if the MRMS time is outside (t - s, t + s] (0: no check)')
     a = p.parse_args()
 
     t_anal = dt.datetime.strptime(a.analysis_time, '%Y%m%d%H%M')
@@ -172,6 +209,10 @@ def main():
         print(f'warning: levels have different valid times: {sorted(times)}')
     t_obs = min(times)
     print(f'analysis {t_anal}, MRMS valid {t_obs}, grid {ni} x {nj}')
+    if a.window_half > 0:
+        lag = (t_obs - t_anal).total_seconds()
+        if not -a.window_half < lag <= a.window_half:
+            sys.exit(f'MRMS time {t_obs} outside the window ({-a.window_half} s, {a.window_half} s] of {t_anal}')
 
     ref[:, 0, :] = ref[:, -1, :] = ref[:, :, 0] = ref[:, :, -1] = -999.0
     hgt_ok = np.array(LEVELS_M)[:, None, None] <= a.max_height
@@ -189,18 +230,33 @@ def main():
         precip[k] = thin(precip[k], a.precip_dbz_horiz_skip)
         clear[k] = thin(clear[k], a.clear_air_dbz_horiz_skip)
 
+    print(f'after thinning: precip {int(precip.sum())}, clear air {int(clear.sum())}')
+    if a.obs_boundary > 0:
+        b = a.obs_boundary
+        inner = np.zeros((nj, ni), bool)
+        inner[b:nj - b - 1, b:ni - b - 1] = True    # obs_boundary + 1 <= i + 1 <= n - obs_boundary - 1
+        n0, c0 = int(precip.sum()), int(clear.sum())
+        precip &= inner[None]
+        clear &= inner[None]
+        print(f'boundary zone ({b} points): dropped precip {n0 - int(precip.sum())},'
+              f' clear air {c0 - int(clear.sum())}')
+
     obs = []
+    ninfl = 0
     for k, z in enumerate(LEVELS_M):
         for j, i in zip(*np.nonzero(precip[k] | clear[k])):
+            err = a.dbz_error_sd * boundary_factor(j, i, nj, ni, a.obsdistbdy, a.maxobsfac)
+            ninfl += err > a.dbz_error_sd
             if clear[k, j, i]:
-                obs.append((2, a.clear_air_dbz_value, lat[j, i], lon[j, i], float(z)))
+                obs.append((2, a.clear_air_dbz_value, lat[j, i], lon[j, i], float(z), err))
             else:
-                obs.append((1, ref[k, j, i], lat[j, i], lon[j, i], float(z)))
-    print(f'after thinning: precip {int(precip.sum())}, clear air {int(clear.sum())}')
+                obs.append((1, ref[k, j, i], lat[j, i], lon[j, i], float(z), err))
+    print(f'kept: precip {int(precip.sum())}, clear air {int(clear.sum())};'
+          f' error inflated near the boundary for {ninfl}')
     for k, z in enumerate(LEVELS_M):
         if precip[k].any() or clear[k].any():
             print(f'  {z / 1000:5.2f} km: precip {int(precip[k].sum()):6d}  clear {int(clear[k].sum()):6d}')
-    write_obs_seq(a.out, obs, t_obs, a.dbz_error_sd)
+    write_obs_seq(a.out, obs, t_obs)
     print(f'wrote {len(obs)} obs to {a.out}')
 
     if a.grid_nc:
