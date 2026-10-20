@@ -8,9 +8,14 @@
 #         (output_hph/<t>/memNNN/prior_d01.nc), its input.nml, obs_seq.out and input inflation.
 #         Reference: that run's analyses (output_hph/<t>/memNNN/analysis_d01.nc, 8 x 16 ranks), so
 #         the 8x16 config also checks that the replay is exact.
-#   mrms  the MRMS pass (config/input.nml.filter_mrms, as MRMS_INFLATION=pass1: no inflation) on a
-#         new run's priors, which have REFL_10CM (e.g. run 1, output_madis), with
-#         obs_madis_mrms/<t>/obs_seq.mrms (~85,000 obs). Reference: the first config's analyses.
+#   mrms  the MRMS pass (config/input.nml.filter_mrms, as MRMS_INFLATION=pass1: no inflation) on
+#         priors with REFL_10CM, with obs_madis_mrms/<t>/obs_seq.mrms (~85,000 obs). Priors either
+#         from a run's saved output (SCALE_SRC, e.g. output_madis: <t>/memNNN/prior_d01.nc) or
+#         extracted here from a run's restart files (SCALE_RUN, e.g. run_madis:
+#         memNNN/wrfrst_d01_<t>, as prep_filter.sh does, into tests/filter_scaling/<case>/priors/;
+#         the restart files are only read, so the run can be resumed afterwards). Reference: the
+#         first config's analyses. Also the DART QC counts per type of the first config
+#         (check_filter_gate.py obs), for the outlier check on the radar types.
 #         Runs on the priors, not on pass 1's analyses: same obs and same work per ob, so the
 #         timing is representative; the QC outcomes can differ slightly from a real pass 2.
 # Configs (SCALE_CONFIGS, space-separated): <nodes>x<ranks per node>[:<nlon>x<nlat>], e.g. 40x32 or
@@ -21,6 +26,8 @@
 #   SCALE_CONFIGS="8x16 8x32 8x64" sbatch -N 8 slurm.filter_scaling      (ranks per node only, 8 nodes)
 #   SCALE_CASE=mrms SCALE_SRC=output_madis SCALE_T=202505200015 \
 #     SCALE_CONFIGS="40x16 40x16:283x144 40x32 40x32:283x144" sbatch slurm.filter_scaling
+#   SCALE_CASE=mrms SCALE_RUN=run_madis SCALE_CONFIGS="8x16 8x16:283x144 8x64 8x64:283x144" \
+#     sbatch -N 8 slurm.filter_scaling          (after run 1's cold start alone: restarts at 00:15)
 #
 # Same UCX settings as slurm.cycle, where filter runs in the cycle. Afterwards, per config: wall,
 # filter.log phases (read / H(x) / assimilation / rest), obs, ms per ob; the analyses against the
@@ -36,6 +43,7 @@
 #SBATCH --exclusive
 
 source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # DART_EXTRA, file_time
 PY=${PROJECT_DIR}/.venv/bin/python
 DA=${PROJECT_DIR}/scripts/da
 NMEM=5
@@ -47,10 +55,19 @@ conv)
    T=${SCALE_T:-202505200030}
    CONFIGS=${SCALE_CONFIGS:-8x16 40x16 40x32}
    NML=${SRC}/${T}/filter/input.nml
-   OBS=$(cat ${SRC}/${T}/filter/obs_seq.out.path) ;;
+   OBS=$(cat ${SRC}/${T}/filter/obs_seq.out.path)
+   PRIORS=${SRC}/${T} ;;
 mrms)
-   SRC=${EXP_DIR}/${SCALE_SRC:?SCALE_SRC (output dir of a run with REFL_10CM) required for mrms}
    T=${SCALE_T:-202505200015}
+   if [ -n "${SCALE_RUN:-}" ] && [ -z "${SCALE_SRC:-}" ]; then
+      SRC=${EXP_DIR}/${SCALE_RUN}          # restart files, extracted below
+      PRIORS=${EXP_DIR}/tests/filter_scaling/${CASE}_${T}/priors
+   elif [ -n "${SCALE_SRC:-}" ] && [ -z "${SCALE_RUN:-}" ]; then
+      SRC=${EXP_DIR}/${SCALE_SRC}
+      PRIORS=${SRC}/${T}
+   else
+      echo "mrms: set SCALE_SRC (output dir with prior_d01.nc) or SCALE_RUN (run dir with wrfrst), not both"; exit 1
+   fi
    CONFIGS=${SCALE_CONFIGS:-40x16 40x16:283x144 40x32 40x32:283x144}
    NML=${CONFIG_DIR}/input.nml.filter_mrms
    OBS=${SCALE_OBS:-${EXP_DIR}/obs_madis_mrms/${T}/obs_seq.mrms} ;;
@@ -67,12 +84,17 @@ set -e
 
 echo "case ${CASE}, source ${SRC} at ${T}, obs ${OBS}, namelist ${NML}, configs: ${CONFIGS}"
 [ -s "${OBS}" ] && [ -s "${NML}" ] || { echo "missing ${OBS} or ${NML}"; exit 1; }
+RST=$(file_time ${T})
 for m in $(seq -f %03g 1 ${NMEM}); do
-   [ -s ${SRC}/${T}/mem${m}/prior_d01.nc ] || { echo "no ${SRC}/${T}/mem${m}/prior_d01.nc"; exit 1; }
+   if [ -n "${SCALE_RUN:-}" ]; then
+      f=${SRC}/mem${m}/wrfrst_d01_${RST}
+   else
+      f=${PRIORS}/mem${m}/prior_d01.nc
+   fi
+   [ -s ${f} ] || { echo "no ${f}"; exit 1; }
 done
 if [ ${CASE} = mrms ]; then
-   ncdump -h ${SRC}/${T}/mem001/prior_d01.nc | grep -q ' REFL_10CM(' \
-      || { echo "${SRC} priors have no REFL_10CM"; exit 1; }
+   ncdump -h ${f} | grep -q ' REFL_10CM(' || { echo "${f} has no REFL_10CM"; exit 1; }
 fi
 for c in ${CONFIGS}; do   # check all configs before running any
    n=${c%%x*}
@@ -85,6 +107,21 @@ for c in ${CONFIGS}; do   # check all configs before running any
 done
 rm -rf ${G}
 mkdir -p ${G}
+
+# priors from restart files (mrms with SCALE_RUN), one one-node step per member, as prep_filter.sh
+if [ -n "${SCALE_RUN:-}" ]; then
+   echo "extracting priors from ${SRC}/memNNN/wrfrst_d01_${RST} (--extra ${DART_EXTRA})"
+   for m in $(seq -f %03g 1 ${NMEM}); do
+      mkdir -p ${PRIORS}/mem${m}
+      srun -N 1 -n 1 -c 8 --exact ${PY} ${DA}/wrfrst_dart.py extract ${SRC}/mem${m}/wrfrst_d01_${RST} \
+         ${PRIORS}/mem${m}/prior_d01.nc --extra ${DART_EXTRA} &
+   done
+   wait
+   for m in $(seq -f %03g 1 ${NMEM}); do
+      [ -s ${PRIORS}/mem${m}/prior_d01.nc ] || { echo "extraction failed for member ${m}"; exit 1; }
+   done
+   date
+fi
 
 refs=()
 for c in ${CONFIGS}; do
@@ -109,7 +146,7 @@ for c in ${CONFIGS}; do
    : > ${d}/input_list_d01.txt
    for m in $(seq -f %03g 1 ${NMEM}); do
       mkdir -p ${d}/mem${m}
-      cp ${SRC}/${T}/mem${m}/prior_d01.nc ${d}/mem${m}/dart_d01.nc
+      cp ${PRIORS}/mem${m}/prior_d01.nc ${d}/mem${m}/dart_d01.nc
       echo ${d}/mem${m}/dart_d01.nc >> ${d}/input_list_d01.txt
    done
    cp ${d}/input_list_d01.txt ${d}/output_list_d01.txt
@@ -130,6 +167,8 @@ for c in ${CONFIGS}; do
       ref=$(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${SRC}/${T}/mem${m}/analysis_d01.nc; done)
    elif [ ${#refs[@]} -eq 0 ]; then
       refs=(${new}); ref=
+      echo "DART QC per type (first config):"
+      ${PY} ${DA}/check_filter_gate.py obs ${d}/obs_seq.final
    else
       ref=${refs[0]}
    fi
