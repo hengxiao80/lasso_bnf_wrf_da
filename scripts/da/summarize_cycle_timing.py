@@ -3,10 +3,15 @@
 
 From output<RUN_NAME>/<t>/cycle.log (cycle_job.sh, post_filter.sh) and each pass's filter.log
 (output<RUN_NAME>/<t>/filter/ and, in two-pass runs, filter_mrms/; DART's "TIME:" lines), per cycle:
-  filter   per pass: wall (cycle_job.sh: prep_filter + srun filter), and from filter.log the
-           phases read (restart files in), H(x) (prior observation values), assim (the serial
-           observation loop) with the number of obs and ms per obs, and the rest (state output,
-           posterior H(x), obs_seq.final); one-pass/no-MRMS runs have one pass.
+  prep     per pass: prep_filter (first pass: prior extraction from wrfrst, filter directory,
+           inflation), from the cycle's start (first pass) or as the pass's logged wall minus srun
+  srun     the filter srun step, from "filter ... on N ranks" to "filter ... done"; "*" = the
+           filter exit guard fired (includes its FILTER_EXIT_GRACE wait). (cycle_job.sh's logged
+           "done in" covers prep + srun since the two-pass wiring of 2026-10-14, srun only before,
+           e.g. step 13; hence the two columns.)
+  read / H(x) / assim / rest   from filter.log: restart files in, prior observation values, the
+           serial observation loop (with the number of obs and ms per obs), and the rest (state
+           output, posterior H(x), obs_seq.final); one-pass/no-MRMS runs have one pass.
   update   post_filter members (insert, qnrain, boundary refit), from the filter's end
   advance  wrf.exe for all members (concurrent), from "members updated"
   total    cycle_job.sh's "complete in"
@@ -26,6 +31,7 @@ import sys
 
 ISO = re.compile(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d) (.*)$')
 FILTER_DONE = re.compile(r'filter (?:\((\w+)\) )?done in (\d+) s')
+FILTER_ON = re.compile(r'filter (?:\((\w+)\) )?on \d+ ranks')
 COMPLETE = re.compile(r'complete in (\d+) s')
 DART_TIME = re.compile(r'^\s*(.*?)\s+TIME: (\d{4}/\d\d/\d\d \d\d:\d\d:\d\d)')
 NOBS = re.compile(r'Processing observation\s+\d+ of\s+(\d+)')
@@ -37,15 +43,25 @@ def secs(a, b):
 
 
 def cycle_log(path):
-    ev = {'filter': {}}
+    ev = {'filter': {}, 'on': {}, 'srun': {}, 'guard': set()}
+    cur = None
     for line in open(path, errors='replace'):
         m = ISO.match(line)
         if not m:
             continue
         ts, msg = dt.datetime.fromisoformat(m.group(1)), m.group(2)
         f = FILTER_DONE.search(msg)
-        if f:
-            ev['filter'][f.group(1) or 'conv'] = int(f.group(2))
+        o = FILTER_ON.search(msg)
+        if o:
+            cur = o.group(1) or 'conv'
+            ev['on'][cur] = ts
+        elif 'filter exit guard' in msg and cur:
+            ev['guard'].add(cur)
+        elif f:
+            ps = f.group(1) or 'conv'
+            ev['filter'][ps] = int(f.group(2))
+            if ps in ev['on']:
+                ev['srun'][ps] = secs(ev['on'][ps], ts)
             ev['filter_end'] = ts
         elif 'members updated' in msg:
             ev['updated'] = ts
@@ -87,7 +103,7 @@ def main():
 
     cycles = sorted(d for d in os.listdir(a.output_dir) if re.fullmatch(r'\d{12}', d))
     print(f'{a.output_dir}')
-    print(f'{"cycle":>12} {"pass":>5} {"filter":>6} {"read":>5} {"H(x)":>5} {"assim":>6} {"nobs":>7} '
+    print(f'{"cycle":>12} {"pass":>5} {"prep":>5} {"srun":>6} {"read":>5} {"H(x)":>5} {"assim":>6} {"nobs":>7} '
           f'{"ms/ob":>6} {"rest":>5} {"update":>6} {"advance":>7} {"total":>6}')
     for c in cycles:
         log = os.path.join(a.output_dir, c, 'cycle.log')
@@ -97,7 +113,8 @@ def main():
         upd = adv = '-'
         if 'updated' in ev and 'filter_end' in ev:
             upd = f'{secs(ev["filter_end"], ev["updated"]):.0f}'
-        start = ev.get('updated') or (ev['complete'] - dt.timedelta(seconds=ev['total']) if 'complete' in ev else None)
+        t0 = ev['complete'] - dt.timedelta(seconds=ev['total']) if 'complete' in ev else None
+        start = ev.get('updated') or t0
         if start and 'advanced' in ev:
             adv = f'{secs(start, ev["advanced"]):.0f}'
         tot = ev.get('total', '-')
@@ -106,7 +123,15 @@ def main():
             sub = 'filter' if ps in ('conv', '-') else 'filter_mrms'
             fl = os.path.join(a.output_dir, c, sub, 'filter.log')
             p = filter_phases(fl) if ps != '-' and os.path.exists(fl) else None
-            row = f'{c:>12} {ps:>5} {wall if wall is not None else "-":>6} '
+            srun = ev['srun'].get(ps)
+            if srun is None:
+                prep = '-'
+            elif i == 0 and t0:
+                prep = f'{secs(t0, ev["on"][ps]):.0f}'
+            else:
+                prep = f'{wall - srun:.0f}'
+            sr = '-' if srun is None else f'{srun:.0f}' + ('*' if ps in ev['guard'] else '')
+            row = f'{c:>12} {ps:>5} {prep:>5} {sr:>6} '
             if p:
                 mspo = f'{1000 * p["assim"] / p["nobs"]:.1f}' if p['nobs'] else '-'
                 row += (f'{p["read"]:5.0f} {p["hx"]:5.0f} {p["assim"]:6.0f} {p["nobs"] or "-":>7} {mspo:>6} '
@@ -116,8 +141,8 @@ def main():
             last = i == len(passes) - 1
             row += f'{upd if last else "":>6} {adv if last else "":>7} {tot if last else "":>6}'
             print(row)
-    print('seconds; filter = prep_filter + srun filter (cycle_job.sh); read/H(x)/assim/rest from filter.log; '
-          'update = post_filter members; advance = wrf.exe, all members')
+    print('seconds; prep = prep_filter; srun = filter step (* = exit guard fired, includes its wait); '
+          'read/H(x)/assim/rest from filter.log; update = post_filter members; advance = wrf.exe, all members')
 
     if a.slurm_out:
         steps = [SACCT.match(l) for l in open(a.slurm_out, errors='replace')]

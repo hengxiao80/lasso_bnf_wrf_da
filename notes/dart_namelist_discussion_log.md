@@ -399,3 +399,24 @@ Details and numbers: `notes/obs_expansion.md` Sec. 9 (scaling test).
   radar pass, whose 18-km cutoff searches ~3 × 3 of the current ~19 × 27-km boxes.
 - **Exit hang:** filter hung after "Finished" on runs that included 512-GB nodes; those nodes are excluded, and
   `run_filter` cancels a step still running 30 s after "Finished" (no output change for 30 s).
+
+## Radar pass: search boxes (`&location_nml :: nlon, nlat`) and the outlier check (`&quality_control_nml`) — 2026-10-21
+
+Numbers: `notes/obs_expansion.md` Sec. 9 (MRMS scaling test, job 1054799).
+
+- **Boxes:** DART's boxes are longitude × latitude and span the searched locations plus 2 × cutoff on each side
+  (`find_box_ranges`), so at 71 × 36 they are ~21 × 29 km for the radar pass and ~29 × 44 km for the conventional
+  pass (the 2026-10-20 entry's "~19 × 27 km" left out the margin). 283 × 144 made the MRMS pass's observation loop
+  26 % faster (19 → 14 s at 40 × 32) with bit-identical analyses. Proposed for `input.nml.filter_mrms` and
+  `input.nml.filter_joint` (in the latter it applies to the conventional obs too, harmlessly); `input.nml.filter`
+  unchanged. **Decided (user, 2026-10-21): 283 × 144 in both files** (done).
+- **Outlier check:** `outlier_threshold = 3` rejected 32 % of `RADAR_REFLECTIVITY` (24,688 of 76,962) at 00:15:
+  almost all observed weak-to-moderate echo (median 14.7 dBZ) where the members are clear (prior mean median −9 dBZ;
+  44 % with zero spread); 2 % of the clear-air obs. HRRRDAS's EnKF has no such check (`sprd_tol = 1.e30`). Options:
+  keep 3 for all; a separate threshold (or none, `-1`) in `input.nml.filter_mrms` for two-pass runs; per-type
+  thresholds in a one-pass run need `enable_special_outlier_code` and code in `quality_control_mod.f90`
+  (`failed_outlier`). **Decided (user, 2026-10-21): keep 3 for all types in runs 3–4** (no code change, the one- and
+  two-pass runs stay comparable, most rejected obs have zero spread and couldn't act); watch the radar QC-7 fraction
+  over the cycles; radar threshold off or ~5 as a later variant.
+- **Also decided (user, 2026-10-21):** run 4 uses `MRMS_INFLATION = both` (details when it comes up); the impact
+  table keeps conventional → `QTY_RADAR_REFLECTIVITY` at 0, as HRRRDAS.

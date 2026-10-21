@@ -82,7 +82,10 @@ MRMS_PASS2_DAMPING=${MRMS_PASS2_DAMPING:-1}
 BDY_DIR=${EXP_DIR}/bdy                       # pristine wrfbdy_d01_memNNN (step 6), never modified
 DART_WORK=${SOFTWARE_DIR}/DART/models/wrf/work
 SEC_TABLE=${SOFTWARE_DIR}/DART/assimilation_code/programs/gen_sampling_err_table/work/sampling_error_correction_table.nc
-GRID_FILE=${MEAN_DIR}/wrfinput_d01_2025-05-20_00_00_00   # filter's wrfinput_d01 (grid and shapes)
+# Filter's wrfinput_d01 (grid, and the template for every state variable's shape): the mean 00Z
+# wrfinput plus REFL_10CM (zeros), which real.exe doesn't write (make_grid_file.py; since 2026-10-21,
+# run 1 stopped on it; before, the plain mean 00Z wrfinput, identical in everything else).
+GRID_FILE=${MEAN_DIR}/dart_wrfinput_d01_2025-05-20_00_00_00
 
 # Resources inside the one 40-node allocation (Q7): each member's wrf.exe on 8 nodes,
 # 16 x 8 ranks x 8 threads; filter on FILTER_NODES x FILTER_TASKS_PER_NODE ranks, one CPU each

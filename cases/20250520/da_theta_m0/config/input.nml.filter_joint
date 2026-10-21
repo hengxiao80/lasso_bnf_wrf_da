@@ -256,6 +256,10 @@
    allow_obs_below_vol         = .false.
    /
 
+# Search boxes nlon x nlat = 283 x 144, 4x the default 71 x 36 (user, 2026-10-21): MRMS scaling test,
+# job 1054799: radar observation loop 19 -> 14 s at 40 x 32, analyses bit-identical (obs_expansion.md
+# Sec. 9). input.nml.filter keeps 71 x 36.
+# Applies to every type, so the conventional obs get the finer boxes too (same results).
 &location_nml
    horiz_dist_only                 = .false.,
    vert_normalization_pressure     = 6666666.7,
@@ -268,8 +272,8 @@
    special_vert_normalization_levels        = 2666.7,               2666.7,
    special_vert_normalization_scale_heights = 177.0,                177.0,
    approximate_distance            = .false.,
-   nlon                            = 71,
-   nlat                            = 36,
+   nlon                            = 283,
+   nlat                            = 144,
    output_box_info                 = .false.,
    /
 

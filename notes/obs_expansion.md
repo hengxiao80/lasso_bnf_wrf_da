@@ -388,15 +388,15 @@ A second way to take MRMS, chosen per run: **`MRMS_FILTER=one_pass`** (vs `two_p
 
 **Earlier notes, step 5 (`REFL_10CM` in the restart file):**
 
-5. State: `REFL_10CM` (`NO_COPY_BACK`) into the file `wrfrst_dart.py extract` builds from `wrfrst`. Checked 2026-10-14: `REFL_10CM` is not in `wrfrst` because its Registry I/O flags are `hdu` (history, nest down/up; `Registry.EM_COMMON:1611`), and runtime I/O (`iofields_filename`) accepts only the history (`h`) and input (`i`) streams (`frame/module_domain.F`, `modify_io_masks`), so putting it in the restart stream needs a **Registry patch (`hdu` → `hdur`) and a WRF rebuild** (option A). Thompson computes it only on `diag_flag` steps, i.e. steps where the history alarm rings (`solve_em.F:374–379`, `module_mp_thompson.F:1450`); our members write history every 15 min (`namelist.input.wrf`) at the same times as the restarts, so `wrfout` and a `wrfrst` with `REFL_10CM` at time t would hold the same array. Option B: `extract` reads `REFL_10CM` from the member's `wrfout` at t (no rebuild). **Decided (user, 2026-10-14): option A**, `patches/wrf_06d4240a_refl_10cm_restart.patch`, **applied and WRF rebuilt 2026-10-14** (old executables kept as `main/*.exe.pre_refl_restart`; `patches/README.md`). **Tested 2026-10-14 (job 1051956, all checks passed):** `REFL_10CM` in the new `wrfrst` is bit-identical to `wrfout` at the same time; nothing else changed against the pre-patch build (657 variables identical); restarting from a pre-patch `wrfrst` works and gives the same 00:30 state as from a new one (`patches/README.md`). Next in step 5: `wrfrst_dart.py extract --extra REFL_10CM` (and the hydrometeors), the state-variable list, `microphysics_type = 5`. Checked at the same time (2026-10-14) that nothing else DART reads comes from `wrfout`: the 12 pilot state fields come from `wrfrst` (`_2` level renamed by `extract`); the static grid fields and global attributes `model_mod` reads (XLAT/XLONG and U/V versions, HGT, PHB, MUB, P_TOP, ZNU, ZNW, DN, DNW, C1H, C2H, XLAND, ZS; MAP_PROJ, DX, DT, ...) come from filter's `wrfinput_d01` = `GRID_FILE`, the mean 00Z `wrfinput`, which has them all; the hydrometeors QCLOUD QRAIN QICE QSNOW QGRAUP QNICE QNRAIN are in `wrfrst` (`extract --extra`). `REFL_10CM` is the only field DART would need that is in neither; the hydrometeors (Q8). Check hydrometeor and `REFL_10CM` spread in the 5 members at 00:15 against these obs.
+5. State: `REFL_10CM` (`NO_COPY_BACK`) into the file `wrfrst_dart.py extract` builds from `wrfrst`. Checked 2026-10-14: `REFL_10CM` is not in `wrfrst` because its Registry I/O flags are `hdu` (history, nest down/up; `Registry.EM_COMMON:1611`), and runtime I/O (`iofields_filename`) accepts only the history (`h`) and input (`i`) streams (`frame/module_domain.F`, `modify_io_masks`), so putting it in the restart stream needs a **Registry patch (`hdu` → `hdur`) and a WRF rebuild** (option A). Thompson computes it only on `diag_flag` steps, i.e. steps where the history alarm rings (`solve_em.F:374–379`, `module_mp_thompson.F:1450`); our members write history every 15 min (`namelist.input.wrf`) at the same times as the restarts, so `wrfout` and a `wrfrst` with `REFL_10CM` at time t would hold the same array. Option B: `extract` reads `REFL_10CM` from the member's `wrfout` at t (no rebuild). **Decided (user, 2026-10-14): option A**, `patches/wrf_06d4240a_refl_10cm_restart.patch`, **applied and WRF rebuilt 2026-10-14** (old executables kept as `main/*.exe.pre_refl_restart`; `patches/README.md`). **Tested 2026-10-14 (job 1051956, all checks passed):** `REFL_10CM` in the new `wrfrst` is bit-identical to `wrfout` at the same time; nothing else changed against the pre-patch build (657 variables identical); restarting from a pre-patch `wrfrst` works and gives the same 00:30 state as from a new one (`patches/README.md`). Next in step 5: `wrfrst_dart.py extract --extra REFL_10CM` (and the hydrometeors), the state-variable list, `microphysics_type = 5`. Checked at the same time (2026-10-14) that nothing else DART reads comes from `wrfout`: the 12 pilot state fields come from `wrfrst` (`_2` level renamed by `extract`); the static grid fields and global attributes `model_mod` reads (XLAT/XLONG and U/V versions, HGT, PHB, MUB, P_TOP, ZNU, ZNW, DN, DNW, C1H, C2H, XLAND, ZS; MAP_PROJ, DX, DT, ...) come from filter's `wrfinput_d01` = `GRID_FILE`, the mean 00Z `wrfinput`, which has them all; the hydrometeors QCLOUD QRAIN QICE QSNOW QGRAUP QNICE QNRAIN are in `wrfrst` (`extract --extra`). `REFL_10CM` is the only field DART would need that is in neither; the hydrometeors (Q8). **Missed here (found 2026-10-21, run 1, Sec. 9):** `GRID_FILE` is also the template for every state variable's dimensions (`add_domain('wrfinput_d01', ...)`, `model_mod.f90:778`), so it must hold `REFL_10CM` too; `GRID_FILE` is now `mean/dart_wrfinput_d01_2025-05-20_00_00_00` (`scripts/da/make_grid_file.py`). Check hydrometeor and `REFL_10CM` spread in the 5 members at 00:15 against these obs.
 
 ## 9. First runs with the new observations (planned 2026-10-15, session "Adding more obs part 6")
 
 1-hour, 5-member pilot as in step 13 (cold start 00:00, analyses 00:15–01:00, `slurm.cycle 202505200000
 202505200100`, 40 nodes); every run starts from the 00Z cold start (restarts need `REFL_10CM`). **Run list (user,
-2026-10-15)**, one at a time, each only after the user's go-ahead. `RUN_NAME`s proposed, not yet agreed:
+2026-10-15)**, one at a time, each only after the user's go-ahead. `RUN_NAME`s agreed (user, 2026-10-21):
 
-| # | Observations | `OBS_NAME` | Filter | `RUN_NAME` (proposed) | Before it can run |
+| # | Observations | `OBS_NAME` | Filter | `RUN_NAME` | Before it can run |
 |---|---|---|---|---|---|
 | 1 | MADIS (rerun of the reference) | `_madis` | one pass | `_madis` | nothing (set built) |
 | 2 | MADIS + mesonet (a), calm winds kept | `_meso_a_calmkeep` | one pass | `_meso_a` | nothing (set built) |
@@ -411,19 +411,21 @@ wall time and memory, and the DART QC-7 (outlier) counts of the radar types (han
 
 **Timing of runs 1–4 (user, 2026-10-15: WRF should cost the same; record how the filter cost changes).** After each
 run: `.venv/bin/python scripts/da/summarize_cycle_timing.py output<RUN_NAME> --slurm-out slurm.cycle.<job>.out`
-(per cycle and pass: filter wall, its read / H(x) / assimilation phases from `filter.log`, obs count and ms per ob,
-post_filter update, WRF advance, total; filter steps' Elapsed and MaxRSS from the sacct table). Results go in the
-table below.
+(per cycle and pass: prep_filter and the filter srun step separately, filter's read / H(x) / assimilation phases
+from `filter.log`, obs count and ms per ob, post_filter update, WRF advance, total; filter steps' Elapsed and MaxRSS
+from the sacct table). Results go in the table below. (Until 2026-10-21 the script had one "filter" column, the wall
+`cycle_job.sh` logs; that covers prep + srun since the two-pass wiring of 10-14, but srun only in step 13, so the
+columns were split and step 13's prep added below.)
 
 Baseline, step 13 `_hph` (job 1047842, MADIS with DART's METAR errors, 5 members, filter on 8 nodes × 16 ranks), s:
 
-| cycle | filter | read | H(x) | assim | obs | ms/ob | update | advance | total |
-|---|---|---|---|---|---|---|---|---|---|
-| 00:00 (cold start) | – | | | | | | – | 133 | 135 |
-| 00:15 | 99 | 2 | 4 | 79 | 2,781 | 28.4 | 114 | 135 | 433 |
-| 00:30 | 114 | 2 | 3 | 96 | 3,492 | 27.5 | 114 | 123 | 433 |
-| 00:45 | 106 | 2 | 3 | 87 | 3,058 | 28.4 | 132 | 130 | 450 |
-| 01:00 | 161 | 2 | 4 | 142 | 4,851 | 29.3 | 119 | 133 | 494 |
+| cycle | prep | srun | read | H(x) | assim | obs | ms/ob | update | advance | total |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 00:00 (cold start) | – | – | | | | | | – | 133 | 135 |
+| 00:15 | 52 | 99 | 2 | 4 | 79 | 2,781 | 28.4 | 114 | 135 | 433 |
+| 00:30 | 49 | 114 | 2 | 3 | 96 | 3,492 | 27.5 | 114 | 123 | 433 |
+| 00:45 | 49 | 106 | 2 | 3 | 87 | 3,058 | 28.4 | 132 | 130 | 450 |
+| 01:00 | 48 | 161 | 2 | 4 | 142 | 4,851 | 29.3 | 119 | 133 | 494 |
 
 Filter MaxRSS 1.70 GB per task in every cycle. The filter is almost all the serial observation loop, ~28 ms per ob
 at the conventional cutoff (0.0235 rad, zero at ~300 km). **Wall-time risk for runs 3 and 4:** MRMS adds ~85,000–89,000
@@ -433,9 +435,22 @@ a fixed per-ob cost (broadcast of the ob's prior, close-state search) that the s
 run 3: raise the time limit for that submission (e.g. `sbatch --time=06:00:00`), and check the 00:15 MRMS pass's
 ms/ob as soon as it finishes.
 
-| run | cycle | pass | filter | read | H(x) | assim | obs | ms/ob | MaxRSS | update | advance | total |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| (filled in after each run) | | | | | | | | | | | | |
+| run | cycle | pass | prep | srun | read | H(x) | assim | obs | ms/ob | rest | update | advance | total |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 `_madis` | 00:00 (cold start, job 1054633) | – | – | – | | | | | | | – | 134 | 136 |
+| 1 | 00:15 | conv | 137 | 59 | 3 | 4 | 18 | 2,781 | 6.5 | 20 | 138 | 151 | 553 |
+| 1 | 00:30 | conv | 129 | 92 (guard) | 4 | 5 | 23 | 3,492 | 6.6 | 18 | 156 | 151 | 593 |
+| 1 | 00:45 | conv | 128 | 61 | 4 | 5 | 20 | 3,058 | 6.5 | 19 | 161 | 157 | 572 |
+| 1 | 01:00 | conv | 131 | 71 | 3 | 5 | 29 | 4,851 | 6.0 | 20 | 157 | 211 | 635 |
+| 2 `_meso_a` | 00:00 (cold start) | – | – | – | | | | | | | – | 151 | 152 |
+| 2 | 00:15 | conv | 133 | 115 (guard) | 3 | 5 | 43 | 7,543 | 5.7 | 19 | 151 | 147 | 611 |
+| 2 | 00:30 | conv | 125 | 119 (guard) | 4 | 5 | 46 | 8,163 | 5.6 | 19 | 167 | 152 | 631 |
+| 2 | 00:45 | conv | 131 | 117 (guard) | 4 | 5 | 44 | 7,628 | 5.8 | 19 | 162 | 149 | 624 |
+| 2 | 01:00 | conv | 129 | 131 (guard) | 4 | 6 | 56 | 9,783 | 5.7 | 19 | 150 | 148 | 622 |
+
+s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min.
+sacct MaxRSS of run 1's filter steps 0.40, 1.99, 0.33, 2.00 GB per task (run 2: 1.99–2.00): unreliable for steps
+this short (sampled; the larger values in the steps that lived longer), so not used. Step 13's `rest` was 10–11 s.
 
 **Speeding up filter (looked up 2026-10-15; DART is v11.25.3, `7bbd35a09`).** The EAKF loop over observations is
 serial; each observation's update is spread over the MPI ranks (state distributed; Anderson and Collins 2007). No
@@ -446,9 +461,13 @@ OpenMP in the update. Levers, none tested yet:
   per-ob communication instead. Results across rank counts need not be bit-identical: pick one layout for runs 1–4.
 - **`&location_nml` `nlon`/`nlat` (search boxes).** The docs: defaults are usually sufficient; for large models "the
   assimilation may run faster by doubling these values or multiplying them by 4" (more memory, shorter linear part of
-  the search). Boxes cover only the regional grid: 71 × 36 over our domain is ~19 × 27 km, so with the radar pass's
-  search distance (2 × cutoff = 18 km) each search scans ~3 × 3 boxes of state; ×4 would cut that for the radar pass.
-  Changes only the search, not the results. `nlon` must be odd.
+  the search). The boxes are in longitude × latitude (not grid x/y) and span the searched locations' lat/lon range
+  plus the search distance (2 × cutoff) on each side (`find_box_ranges` in `threed_sphere/location_mod.f90`), so they
+  differ by pass. Computed from `geo_em.d01.nc` (2026-10-21; E–W at mid-domain): radar pass (search 18 km) 71 × 36
+  → ~21 × 29 km, 283 × 144 → ~5 × 7 km; conventional pass (search 300 km) 71 × 36 → ~29 × 44 km, 283 × 144 → ~7 × 11
+  km. (Earlier "~19 × 27 km" divided the grid itself, without the margin.) At 71 × 36 a radar ob's search covers ~5×
+  the area of its 18-km circle, at 283 × 144 ~1.7×. Changes only the search, not the results. `nlon` must be odd.
+  `nlon`/`nlat` apply to all types, so in `input.nml.filter_joint` the conventional obs would get the finer boxes too.
 - **Settings already right:** `convert_all_{state,obs}_verticals_first = .true.`, `distribute_mean = .false.` (faster,
   more memory), `sort_obs_inc = .false.` (expensive, unneeded for EAKF), `approximate_distance = .false.` (docs: keep
   false for regional models). `close_obs_caching` (default true) is switched off by DART itself when special cutoffs
@@ -514,3 +533,130 @@ the filter directory. Tested on the login node with stand-ins (normal exit, hang
   "Finished", and the guard still waits for 30 s without output-file changes.
 - Still to do: the MRMS scaling test after run 1 (`SCALE_CASE=mrms SCALE_SRC=output_madis`), which gives the radar
   ms per ob for runs 3–4 at 40 × 32 and the search-box setting; `MRMS_INFLATION` for run 4.
+
+**Run 1, first submission (job 1054633, 2026-10-21, cirrus65–104, all 256-GB nodes): stopped at the first analysis.**
+The 00:00 cold start completed (136 s; `wrf.exe` 2:04–2:13 per member). At 00:15 the extraction worked
+(`dart_d01.nc` has all 17 state fields), then `fill_inflation_restart` stopped in `static_init_model`: "inq_varid
+REFL_10CM: NetCDF: Variable not found". DART's WRF `model_mod` uses filter's `wrfinput_d01` (= `GRID_FILE`, the mean
+00Z `wrfinput`) not only for the static grid fields but as the template for every state variable's dimensions and
+attributes (`add_domain`, `model_mod.f90:778`); `real.exe` writes no `REFL_10CM`. The other 16 state fields are in it
+(checked for all three namelists, `input.nml.filter`, `_mrms`, `_joint`). filter itself and the MRMS scaling test
+(same `GRID_FILE`) would have stopped the same way. **Fix (2026-10-21):** `scripts/da/make_grid_file.py` writes
+`mean/dart_wrfinput_d01_2025-05-20_00_00_00` = the mean 00Z `wrfinput`, copied unchanged, plus `REFL_10CM` defined as
+in the patched `wrfrst` (dimensions, type, attributes; filled with zeros, since only the shape is read); `GRID_FILE`
+in `experiment.sh` points to it. Checked: all 198 original variables, global attributes and dimensions identical
+to the mean `wrfinput`; `fill_inflation_restart` on the login node with run 1's `input.nml` and member 1's
+`dart_d01.nc` finished, inflation 1.0 / sd 0.6 for all 17 state fields. Nothing in the restart files had been
+touched (`prep_filter.sh` only reads them), so resubmitting the same command resumes run 1 at 00:15.
+
+**To do after runs 3 or 4 (user, 2026-10-21): the cleaner fix, `REFL_10CM` from `real.exe`.** Runtime I/O can add it
+to the main input stream: `+:i:0:REFL_10CM` (`frame/module_domain.F`, `modify_io_masks1`: type `i`, stream 0 = main
+input), and `real.exe` applies `iofields_filename` on every write (`share/output_wrf.F:114`); `REFL_10CM` is allocated
+in `real.exe` because `namelist.input.real` has `do_radar_ref = 1` (package `radar_refl`). Values are whatever
+`real.exe` leaves in it (it computes no reflectivity); DART never reads them. Steps: (1) `config/iofields_real.txt`
+with that line, `iofields_filename` in `config/namelist.input.real`, `make_mean_icbc.sh` links the file into its
+work directory, so every mean `wrfinput` has `REFL_10CM` from the start (also for the 50-member setup); (2) keep the
+current file as `mean/wrfinput_d01_2025-05-20_00_00_00.pre_refl` and rerun `real.exe` for 05-20 00Z only (hour 24,
+`FIRST_HOUR=24 LAST_HOUR=24 sbatch slurm.make_mean_icbc`, ~3 min on 4 nodes; all 73 hours would take ~83 min and are
+not needed: only 00Z is `GRID_FILE`); (3) check all 198 variables bit-identical to the old file, plus `REFL_10CM`
+(`real.exe` was rebuilt 10-14, but only the restart I/O flag changed); (4) `GRID_FILE` back to the plain mean 00Z
+`wrfinput`; delete `scripts/da/make_grid_file.py` and `mean/dart_wrfinput_d01_2025-05-20_00_00_00`; update this note
+and the `CLAUDE.md` gotcha. Not during a run: every cycle's `prep_filter.sh` reads `GRID_FILE`.
+
+**Run 1 `_madis` (jobs 1054633 + 1054795, 2026-10-21): passed.** All 4 analyses `complete`, `check_cycle` passed in
+every cycle, no CFL lines, `driver: done`. Same obs as step 13 `_hph` (2,781 / 3,492 / 3,058 / 4,851), with the NCEP
+METAR errors.
+- **Exit hang on 256-GB nodes:** the guard fired at 00:30 (step 1054795.22, cancelled 30 s after "Finished",
+  outputs complete); 00:15, 00:45 and 01:00 exited normally on the same nodes. This refutes the 512-GB-node
+  explanation of 10-20. Side investigation handed off: `notes/handoffs/2026-10-21_filter_exit_hang.md`.
+- **Same start as step 13:** the 00:15 priors of members 1 and 3 are bit-identical to `_hph`'s in all 17 common
+  variables (so the patched `wrf.exe` and the new grid file change nothing before the first analysis).
+- **What differs from `_hph` in the filter:** (a) the METAR errors (T2 1.26 K, wind 1.59 m/s, RH 0.059, against
+  DART's); (b) the state list: QCLOUD `UPDATE`, QRAIN QSNOW QGRAUP `REFL_10CM` `NO_COPY_BACK` (and their clamps);
+  (c) settings that act only on radar or mesonet obs, absent here (`microphysics_type` 5, `apply_ref_limit_to_fwd_op`,
+  the `LAND_SFC_*` lists); (d) 40 × 32 ranks (bit-identical analyses, job 1054411). In DART's EAKF each state
+  element is updated by regression on the observation's prior ensemble, the conventional forward operators read no
+  hydrometeors, and inflation is per element, so the added `NO_COPY_BACK` fields should not change the analysis of
+  the other variables (expected, not tested; a replay of 00:15 with run 1's namelist and `obs/` would show it).
+  QCLOUD does matter from 00:30 on: its increment goes into the model.
+- **00:15, mean increment RMS, `_hph` → run 1** (only the obs errors differ here): T2 0.127 → 0.259 K, Q2 9.5e-5 →
+  2.5e-4, V10 0.154 → 0.32, U10 0.10 → 0.17 m/s, QVAPOR 4.1e-5 → 7.8e-5, THM 0.10 → 0.12 K, U 0.13 → 0.16 m/s, MU
+  28.0 → 29.7 Pa, PSFC 26.6 → 28.3 Pa (altimeter error unchanged); QCLOUD 3.5e-6 (new). Posterior METAR T2 RMS
+  0.95 → 0.81 K. Post-analysis |dpsfc/dt| (steps 2–4) higher than `_hph` (00:30: up to 305 against 257 hPa/3h),
+  the same by minutes 5–15 (84–91); from these two runs the METAR errors and the QCLOUD insertion can't be told apart.
+- **Cost, against step 13** (obs errors don't change it; the state list and layout do): srun 99–161 → 59–71 s (one
+  hang: 92 s); assim 28 → 6.5 ms/ob (40 × 32 alone gave 2.9 ms/ob with step 13's state, job 1054411, so the 17-field
+  state costs ~2.2× per ob); read 2 → 3–4 s and rest 10 → 18–20 s (more fields in and out); **prep 48–52 → 128–137 s**
+  (`wrfrst_dart.py extract` of 6 more 3-D fields per member, now the largest part of the filter stage); update
+  114–132 → 138–161 s (QCLOUD inserted too, bigger files); `check_cycle` ~33 → ~68 s. WRF per member unchanged
+  (~120 s on contiguous nodes), but the member on the split node set cirrus1–4, 17, 50–52 took ~150 s in every cycle,
+  and one member on cirrus18–25 took 209 s at 01:00, hence advance 151–211 s. Cycle total 553–635 s against 433–494.
+
+**MRMS scaling test (job 1054799, 2026-10-21, cirrus1–4, 17–52, 9 min):** `SCALE_CASE=mrms SCALE_SRC=output_madis`,
+the MRMS pass (`input.nml.filter_mrms`, no inflation) on run 1's 00:15 priors with `obs_madis_mrms/<t>/obs_seq.mrms`
+(85,551 obs: 76,962 `RADAR_REFLECTIVITY`, 8,589 `RADAR_CLEARAIR_REFLECTIVITY`). Results in
+`tests/filter_scaling/mrms_202505200015/`. s:
+
+| config | wall | read | H(x) | assim | ms/ob | rest | exit guard |
+|---|---|---|---|---|---|---|---|
+| 40x32 | 101 | 3 | 9 | 19 | 0.22 | 25 | fired |
+| 40x32:283x144 | 94 | 3 | 8 | 14 | 0.16 | 26 | fired |
+| 40x64 | 125 | 4 | 9 | 23 | 0.27 | 25 | fired |
+| 40x64:283x144 | 124 | 4 | 9 | 21 | 0.25 | 24 | fired |
+
+- **The radar pass is cheap:** 0.22 ms per ob at 40 × 32, against 6.5 ms for a conventional ob in run 1 (cutoff
+  0.001413 against 0.0235 rad: each ob touches far less state). Filter itself ~60–70 s per MRMS pass, plus the guard's
+  30 s when it fires. The wall-time risk above is gone: runs 3 and 4 fit in `slurm.cycle`'s 2 h.
+- **Search boxes ×4 (283 × 144):** observation loop −26 % (19 → 14 s), analyses bit-identical in all 5 members. Saves
+  ~5 s per MRMS pass.
+- **64 ranks per node is slower** than 32 (23 against 19 s; bit-identical). 40 × 32 stays.
+- **Exit guard fired in all 4 configs**, on 256-GB nodes only.
+- **Outlier check (`outlier_threshold = 3`) on the radar obs (first config):**
+
+  | type | n | assimilated | QC 7 | prior obs−mean (assim.) | spread median (assim. / QC 7) | zero spread among QC 7 |
+  |---|---|---|---|---|---|---|
+  | `RADAR_REFLECTIVITY` | 76,962 | 52,273 | **24,688 (32 %)** | +3.9 dBZ (RMS 9.4) | 1.40 / 0.29 dBZ | 44 % |
+  | `RADAR_CLEARAIR_REFLECTIVITY` | 8,589 | 8,409 | 180 (2 %) | −0.5 dBZ (RMS 2.3) | 0.00 / 2.20 dBZ | 0 % |
+
+  The reflectivity outliers are almost all **observed echo where every member is (nearly) clear**: 87 % have obs >
+  prior mean, prior mean median −9 dBZ (quartiles −10, −9, 0.3), obs median 14.7 dBZ (quartiles 12.0, 14.7, 21.2);
+  15 % are obs ≥ 20 dBZ with prior mean < 10; 8 % both ≥ 20 dBZ (intensity); none is a spurious model echo (obs <
+  10, prior ≥ 20). Obs error 5 dBZ (up to 10.4 near the boundary). The clear-air outliers are the opposite: model
+  echo (prior mean median 15 dBZ) where MRMS is clear. With zero prior spread (44 % of the reflectivity outliers) an
+  ob can't change the state whether it passes or not; with small spread its increment is small (Δx ∝ cov(x, y) /
+  (σ_y² + σ_o²) × innovation). **HRRRDAS:** its EnKF has `sprd_tol = 1.e30` (`parm/hrrrdas/hrrrdas_enkf_wrf_namelist.sh`),
+  i.e. no EnKF outlier check for any type; the GSI observer's dBZ gross check is set in its convinfo, which is not
+  public. In DART a per-type threshold needs `enable_special_outlier_code` and code in `failed_outlier`
+  (`quality_control_mod.f90`); in a two-pass run the MRMS pass has its own `&quality_control_nml`
+  (`input.nml.filter_mrms`), in one pass (`input.nml.filter_joint`) only the special code can separate the types.
+
+**Decisions (user, 2026-10-21) for runs 3–4:**
+1. **Search boxes 283 × 144** in `input.nml.filter_mrms` and `input.nml.filter_joint` (done; `input.nml.filter` keeps
+   71 × 36).
+2. **`outlier_threshold = 3` kept for all types**, radar included: no code change, one- and two-pass runs stay
+   comparable, and most of what it rejects can't act (zero spread). Watch the QC-7 fraction of the radar types over
+   the cycles as hydrometeor spread builds; a radar threshold off (or ~5) is a later variant.
+3. **Run 4: `MRMS_INFLATION=both`**; the details (`MRMS_PASS2_DAMPING`, `INF_DAMPING`, flavor) to be decided when
+   run 4 comes up.
+4. **Impact table:** conventional → `QTY_RADAR_REFLECTIVITY` stays 0 (as HRRRDAS; `config/obs_impact_joint.txt`).
+5. No `--time` change for runs 3–4: the MRMS pass costs ~1 min of filter per cycle.
+
+**Run 2 `_meso_a` (job 1054801, 2026-10-21, cirrus1–4, 17–52, 44 min): passed.** Observation set
+`obs_meso_a_calmkeep/` (MADIS + mesonet option a, calm winds kept). All 4 analyses `complete`, `check_cycle` passed,
+no CFL lines, `driver: done`. **Exit guard fired in all 4 cycles** (since 10-20: 13 hangs in 17 multi-node filter
+runs).
+- **Mesonet obs per cycle:** `LAND_SFC_TEMPERATURE` 1,663–1,799, `_SPECIFIC_HUMIDITY` 1,002–1,035 (4–7 outliers),
+  `_U/_V_WIND_COMPONENT` 427–537 each, all assimilated; `LAND_SFC_ALTIMETER` 1,051–1,082 evaluated only (38–75
+  outliers). Obs−prior biases: T ≈ 0 (−0.10 to −0.02 K), q +0.44 to +0.95 g/kg (obs moister), u +0.35 to +0.63 m/s,
+  **v −0.93 to −1.19 m/s**; prior RMS T 1.2 K, u 1.6–1.8, v 2.1–2.3 m/s, q 1.3–1.7 g/kg (errors 3.0 K, 3.0 m/s,
+  RH 0.07). The posterior fits to the mesonet obs improve little (e.g. T 1.21 → 1.11 K at 00:15, v bias kept),
+  as expected with errors of 3 K / 3 m/s against ~0.4–0.8 prior spread.
+- **METAR fits (assimilated in both runs):** similar to run 1 (01:00 T2 posterior 1.08 against 1.05 K); the prior
+  2-m T spread is lower (01:00: 0.37 against 0.50 K).
+- **Post-analysis |dpsfc/dt| (max of steps 2–4, hPa/3h, per cycle 00:15–01:00):** `_hph` 171 / 257 / 217 / 310,
+  run 1 212 / 305 / 292 / 429, run 2 261 / 374 / 332 / 452; minutes 5–15 the same in all three (80–92). The
+  initial adjustment grows with the surface-obs impact (smaller METAR errors, then the mesonet); it dies out within
+  ~5 min in every cycle so far.
+- **Cost against run 1:** 2.2–2.7× the obs (7,543–9,783, including ~1,060 evaluated altimeters), assim 43–56 s
+  (5.7 ms/ob, about run 1's per ob), filter srun ~85–100 s without the guard's wait; prep, update and advance as in
+  run 1. Cycle total 611–631 s.

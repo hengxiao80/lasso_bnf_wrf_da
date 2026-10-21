@@ -60,7 +60,9 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   (`FILTER_NODES`/`FILTER_TASKS_PER_NODE` in `experiment.sh`; step 13 used 8 × 16). The scaling test
   (`slurm.filter_scaling`) gave bit-identical analyses for 8 × 16, 40 × 16 and 40 × 32, with the conventional
   observation loop at 00:30 going from 97 s to 10 s. Planned 1-hour runs (Sec. 9): `_madis`, `_meso_a`,
-  `_madis_mrms1p`, `_madis_mrms2p`, then one with everything; none run yet. MRMS scaling test after run 1.
+  `_madis_mrms1p`, `_madis_mrms2p`, then one with everything. **Runs 1 (`_madis`) and 2 (`_meso_a`) passed
+  2026-10-21**; MRMS scaling test done (radar pass ~0.2 ms/ob, ~1 min of filter; `&location_nml` 283 × 144 in the two
+  MRMS namelists). Decided for runs 3–4: `outlier_threshold = 3` for all types, run 4 `MRMS_INFLATION=both`.
 - `model_mod_check`: interpolation test only (`test1thru = 0`) run 2026-09-22 in `cases/20250520/dart/mmc/`
   ("Finished successfully"; its `input.nml` is the ancestor of `input.nml.filter`); the fuller tests
   (`test1thru` > 0) deferred by the user.
@@ -119,12 +121,19 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   jobs (`slurm.wrf`): `UCX_TLS=self,sm,ud` and `UCX_UD_MLX5_RX_QUEUE_LEN=16384`; without them the
   larger 500-m runs fail on MPI communication (no speed difference at 2.5 km). `real.exe` jobs
   (`slurm.real`): `UCX_TLS=rc,xpmem,self`, as in sey's real.exe job.
-- **DART filter hangs at exit on the 512-GB nodes** (cirrus57–64, 121–128; the other 100 are 256 GB). In every
-  multi-node filter run that included some of them, all ranks kept spinning after "Finished ... at" with the outputs
-  complete; on 256-GB nodes it always exited. Cause not established. `slurm.cycle` and `slurm.filter_scaling`
-  `--exclude` them, and `run_filter` (`scripts/da/cycle_lib.sh`, used by `cycle_job.sh`) cancels a filter step that
+- **DART filter sometimes hangs at exit**: all ranks keep spinning after "Finished ... at", outputs complete.
+  First blamed on the 512-GB nodes (cirrus57–64, 121–128; every multi-node run with some of them hung on 10-20), but
+  run 1 hung once in four cycles on 256-GB nodes only (2026-10-21): intermittent, cause not established
+  (investigation: `notes/handoffs/2026-10-21_filter_exit_hang.md`). `slurm.cycle` and `slurm.filter_scaling` still
+  `--exclude` the 512-GB nodes, and `run_filter` (`scripts/da/cycle_lib.sh`, used by `cycle_job.sh`) cancels a filter step that
   hasn't exited 30 s after "Finished" (`FILTER_EXIT_GRACE`), logging "filter exit guard". (2026-10-20,
   `notes/obs_expansion.md` Sec. 9.)
+- **Every DART state variable must also be in filter's `wrfinput_d01`** (`GRID_FILE` in `experiment.sh`): WRF
+  `model_mod` takes each state variable's shape from it, not only the static grid. `real.exe`'s `wrfinput` lacks
+  `REFL_10CM`, so `GRID_FILE` is `mean/dart_wrfinput_d01_2025-05-20_00_00_00` (`scripts/da/make_grid_file.py`);
+  run 1 stopped on this (2026-10-21). A new state field not in it needs `make_grid_file.py --add`. Interim fix:
+  after runs 3 or 4, `real.exe` is to write `REFL_10CM` itself (runtime I/O `+:i:0:REFL_10CM`) and `GRID_FILE` goes
+  back to the plain mean 00Z `wrfinput` (user, 2026-10-21; steps in `notes/obs_expansion.md` Sec. 9, run 1).
 - Give filter jobs `slurm.cycle`'s shape and environment (`--ntasks-per-node=16 --cpus-per-task=8`, the `OMP_*`
   settings, `ulimit -s 64000000`). The filter step's own `srun` options were identical, yet a job shaped
   128 × 1 per node without the `OMP_*` settings made filter's observation loop 27 % slower.
