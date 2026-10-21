@@ -56,6 +56,11 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   Design and open items: `notes/obs_expansion.md` Sec. 8.4–8.5.
   **WRF is patched** so `REFL_10CM` is in `wrfrst` (`patches/wrf_06d4240a_refl_10cm_restart.patch`, rebuilt and tested
   2026-10-14; old executables kept as `main/*.exe.pre_refl_restart`). Restart files written before then lack `REFL_10CM`.
+- **Filter layout and run plan** (2026-10-20, `notes/obs_expansion.md` Sec. 9): filter runs on 40 nodes × 32 ranks
+  (`FILTER_NODES`/`FILTER_TASKS_PER_NODE` in `experiment.sh`; step 13 used 8 × 16). The scaling test
+  (`slurm.filter_scaling`) gave bit-identical analyses for 8 × 16, 40 × 16 and 40 × 32, with the conventional
+  observation loop at 00:30 going from 97 s to 10 s. Planned 1-hour runs (Sec. 9): `_madis`, `_meso_a`,
+  `_madis_mrms1p`, `_madis_mrms2p`, then one with everything; none run yet. MRMS scaling test after run 1.
 - `model_mod_check`: interpolation test only (`test1thru = 0`) run 2026-09-22 in `cases/20250520/dart/mmc/`
   ("Finished successfully"; its `input.nml` is the ancestor of `input.nml.filter`); the fuller tests
   (`test1thru` > 0) deferred by the user.
@@ -114,6 +119,15 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   jobs (`slurm.wrf`): `UCX_TLS=self,sm,ud` and `UCX_UD_MLX5_RX_QUEUE_LEN=16384`; without them the
   larger 500-m runs fail on MPI communication (no speed difference at 2.5 km). `real.exe` jobs
   (`slurm.real`): `UCX_TLS=rc,xpmem,self`, as in sey's real.exe job.
+- **DART filter hangs at exit on the 512-GB nodes** (cirrus57–64, 121–128; the other 100 are 256 GB). In every
+  multi-node filter run that included some of them, all ranks kept spinning after "Finished ... at" with the outputs
+  complete; on 256-GB nodes it always exited. Cause not established. `slurm.cycle` and `slurm.filter_scaling`
+  `--exclude` them, and `run_filter` (`scripts/da/cycle_lib.sh`, used by `cycle_job.sh`) cancels a filter step that
+  hasn't exited 30 s after "Finished" (`FILTER_EXIT_GRACE`), logging "filter exit guard". (2026-10-20,
+  `notes/obs_expansion.md` Sec. 9.)
+- Give filter jobs `slurm.cycle`'s shape and environment (`--ntasks-per-node=16 --cpus-per-task=8`, the `OMP_*`
+  settings, `ulimit -s 64000000`). The filter step's own `srun` options were identical, yet a job shaped
+  128 × 1 per node without the `OMP_*` settings made filter's observation loop 27 % slower.
 - PnetCDF is compiled in but troublesome. Quilting with PnetCDF crashes at startup, and quilting with
   plain netCDF gives no overlap. Use `io_form_history = 2` with `use_netcdf_classic = .true.`.
   Compressed netCDF-4 output costs ~45 s per write (single-threaded deflate) versus ~5 s for classic.

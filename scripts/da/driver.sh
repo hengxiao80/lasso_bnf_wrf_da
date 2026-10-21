@@ -17,6 +17,11 @@ DA=${PROJECT_DIR}/scripts/da
 
 [ "${first}" -le "${last}" ] || die "first ${first} after last ${last}"
 [ "${first}" -ge "${FIRST_CYCLE}" ] || die "first ${first} before FIRST_CYCLE ${FIRST_CYCLE}"
+# The filter layout (experiment.sh) must fit the allocation, checked here rather than at the first analysis.
+[ "${FILTER_NODES}" -le "${SLURM_NNODES:-${FILTER_NODES}}" ] \
+   || die "FILTER_NODES=${FILTER_NODES} is more than the job's ${SLURM_NNODES} nodes"
+[ $((FILTER_TASKS_PER_NODE * 1)) -ge 1 ] && [ "${FILTER_TASKS_PER_NODE}" -le 128 ] \
+   || die "FILTER_TASKS_PER_NODE=${FILTER_TASKS_PER_NODE}: must be 1-128"
 times=()
 t=${first}
 while [ "${t}" -le "${last}" ]; do
@@ -79,7 +84,7 @@ else
    echo "${settings}" > "${OUTPUT_DIR}/settings.txt"
 fi
 
-log "driver: run '${RUN_NAME}' (${RUN_DIR}), ${#times[@]} cycles ${first} -> ${last}, ${NUM_ENS} members, hydrostatic_ph=${HYDROSTATIC_PH}, inf_damping=${INF_DAMPING}, inf_flavor=${INF_FLAVOR}, inf_sd_lower_bound=${INF_SD_LOWER_BOUND}, obs ${OBS_DIR}"
+log "driver: run '${RUN_NAME}' (${RUN_DIR}), ${#times[@]} cycles ${first} -> ${last}, ${NUM_ENS} members, filter ${FILTER_NODES}x${FILTER_TASKS_PER_NODE}, hydrostatic_ph=${HYDROSTATIC_PH}, inf_damping=${INF_DAMPING}, inf_flavor=${INF_FLAVOR}, inf_sd_lower_bound=${INF_SD_LOWER_BOUND}, obs ${OBS_DIR}"
 for t in "${times[@]}"; do
    mkdir -p "${OUTPUT_DIR}/${t}"
    log "driver: cycle ${t}"
@@ -87,6 +92,6 @@ for t in "${times[@]}"; do
       tail -n 30 "${OUTPUT_DIR}/${t}/cycle.log"
       die "cycle ${t} failed, see ${OUTPUT_DIR}/${t}/cycle.log"
    fi
-   grep -E 'filter( \([a-z]*\))? done|complete in' "${OUTPUT_DIR}/${t}/cycle.log" | tail -n 3
+   grep -E 'filter( \([a-z]*\))? done|filter exit guard|complete in' "${OUTPUT_DIR}/${t}/cycle.log" | tail -n 4
 done
 log "driver: done"

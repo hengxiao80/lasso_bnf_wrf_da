@@ -38,11 +38,10 @@ filter_pass() {
    [ "${pass}" = conv ] || dir=${RUN_DIR}/filter_mrms
    "${DA}/prep_filter.sh" "${exp_sh}" "${t}" "${pass}"
    log "cycle ${t}: filter (${pass}) on $((FILTER_NODES * FILTER_TASKS_PER_NODE)) ranks"
-   (cd "${dir}" && srun -N "${FILTER_NODES}" -n $((FILTER_NODES * FILTER_TASKS_PER_NODE)) \
-      --ntasks-per-node="${FILTER_TASKS_PER_NODE}" -c 1 --exact "${DART_WORK}/filter" > filter.log 2>&1) \
-      || die "filter (${pass}) failed at ${t}, see ${dir}/filter.log"
-   grep -q 'Finished \.\.\. at' "${dir}/filter.log" \
-      || die "filter (${pass}) did not finish at ${t}, see ${dir}/filter.log"
+   # run_filter (cycle_lib.sh): fails unless filter.log has "Finished ... at"; exit guard for a hang
+   run_filter "${dir}" -N "${FILTER_NODES}" -n $((FILTER_NODES * FILTER_TASKS_PER_NODE)) \
+      --ntasks-per-node="${FILTER_TASKS_PER_NODE}" -c 1 --exact \
+      || die "filter (${pass}) failed or did not finish at ${t}, see ${dir}/filter.log"
    log "cycle ${t}: filter (${pass}) done in $((SECONDS - t0)) s"
    "${DA}/post_filter.sh" "${exp_sh}" "${t}" save "${pass}"
 }

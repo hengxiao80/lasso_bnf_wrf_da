@@ -29,21 +29,28 @@
 #   SCALE_CASE=mrms SCALE_RUN=run_madis SCALE_CONFIGS="8x16 8x16:283x144 8x64 8x64:283x144" \
 #     sbatch -N 8 slurm.filter_scaling          (after run 1's cold start alone: restarts at 00:15)
 #
-# Same UCX settings as slurm.cycle, where filter runs in the cycle. Afterwards, per config: wall,
-# filter.log phases (read / H(x) / assimilation / rest), obs, ms per ob; the analyses against the
+# Job shape and environment as slurm.cycle (16 tasks x 8 CPUs per node, OMP_*, stack limit, UCX), so
+# filter runs as it does in the cycle: the first submission (job 1054410, 2026-10-20) asked for 128 x 1
+# per node without the OMP settings, and its 8x16 filter was 27 % slower than step 13's and never
+# exited after "Finished". Filter runs through run_filter (cycle_lib.sh), as in cycle_job.sh, with
+# its exit guard. Afterwards, per config: wall (includes the guard's wait if it fired), filter.log
+# phases (read / H(x) / assimilation / rest), obs, ms per ob, guard; the analyses against the
 # reference; sacct (Elapsed, MaxRSS per filter step, in config order).
+# The 512-GB nodes (cirrus57-64, 121-128) are excluded, as in slurm.cycle: with some of them in the job
+# (1054410, 1054411) filter hung at exit every time; without them (1054413) it exited normally.
 #SBATCH --job-name=fscale520
 #SBATCH -A cli120
 #SBATCH --partition=batch_all
 #SBATCH --time=01:00:00
 #SBATCH --nodes=40
-#SBATCH --ntasks-per-node=128
-#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
 #SBATCH --output=slurm.filter_scaling.%j.out
 #SBATCH --exclusive
+#SBATCH --exclude=cirrus[57-64,121-128]
 
 source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
-source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # DART_EXTRA, file_time
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # DART_EXTRA, file_time, run_filter
 PY=${PROJECT_DIR}/.venv/bin/python
 DA=${PROJECT_DIR}/scripts/da
 NMEM=5
@@ -77,9 +84,14 @@ G=${EXP_DIR}/tests/filter_scaling/${CASE}_${T}
 
 date
 source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
 export UCX_TLS=self,sm,ud
 export UCX_UD_MLX5_RX_QUEUE_LEN=16384
-ulimit -s unlimited
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
 set -e
 
 echo "case ${CASE}, source ${SRC} at ${T}, obs ${OBS}, namelist ${NML}, configs: ${CONFIGS}"
@@ -155,10 +167,9 @@ for c in ${CONFIGS}; do
    date
    cd ${d}
    SECONDS=0
-   srun -N ${nodes} -n $((nodes * tpn)) --ntasks-per-node=${tpn} -c 1 --exact ${DART_WORK}/filter \
-      > filter.log 2>&1 || { echo "filter failed for ${c}, see ${d}/filter.log"; tail -30 filter.log; exit 1; }
-   grep -q 'Finished \.\.\. at' filter.log || { echo "filter did not finish for ${c}"; exit 1; }
-   echo "${c}: ${SECONDS} s"
+   run_filter ${d} -N ${nodes} -n $((nodes * tpn)) --ntasks-per-node=${tpn} -c 1 --exact \
+      || { echo "filter failed or did not finish for ${c}, see ${d}/filter.log"; tail -30 filter.log; exit 1; }
+   echo "${c}: ${SECONDS} s$([ ! -f filter_exit_guard.txt ] || echo ' (exit guard fired)')"
    echo ${SECONDS} > wall_s.txt
 
    # analyses against the reference
@@ -183,18 +194,19 @@ done
 # --- summary --------------------------------------------------------------------------------
 echo
 echo "=== summary (${CASE} at ${T}), seconds"
-printf '%-18s %6s %5s %5s %6s %7s %6s %5s\n' config wall read 'H(x)' assim nobs ms/ob rest
+printf '%-18s %6s %5s %5s %6s %7s %6s %5s %6s\n' config wall read 'H(x)' assim nobs ms/ob rest guard
 for c in ${CONFIGS}; do
    d=${G}/${c/:/_}
    ${PY} - ${d} ${c} <<'EOF'
-import sys
+import os, sys
 sys.path.insert(0, '/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da')
 from summarize_cycle_timing import filter_phases
 d, c = sys.argv[1], sys.argv[2]
 p = filter_phases(f'{d}/filter.log')
 wall = open(f'{d}/wall_s.txt').read().strip()
 ms = f'{1000 * p["assim"] / p["nobs"]:.2f}' if p['nobs'] else '-'
-print(f'{c:<18} {wall:>6} {p["read"]:5.0f} {p["hx"]:5.0f} {p["assim"]:6.0f} {p["nobs"] or "-":>7} {ms:>6} {p["rest"]:5.0f}')
+guard = 'fired' if os.path.exists(f'{d}/filter_exit_guard.txt') else '-'
+print(f'{c:<18} {wall:>6} {p["read"]:5.0f} {p["hx"]:5.0f} {p["assim"]:6.0f} {p["nobs"] or "-":>7} {ms:>6} {p["rest"]:5.0f} {guard:>6}')
 EOF
 done
 date

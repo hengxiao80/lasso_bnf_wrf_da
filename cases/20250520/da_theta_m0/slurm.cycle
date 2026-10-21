@@ -1,8 +1,11 @@
 #!/bin/bash
 # Cycling job (pilot steps 12-13): one 40-node allocation running driver.sh over the cycles
 # <first> to <last> (YYYYMMDDHHMM). Q7: each member's wrf.exe on 8 nodes (16 x 8 ranks x 8 threads),
-# the 5 members as concurrent srun --exact steps; filter on 8 nodes x 16 ranks; the per-member
-# Python and update_wrf_bc steps on one node each. Resumable: resubmit with the same arguments.
+# the 5 members as concurrent srun --exact steps; filter on FILTER_NODES x FILTER_TASKS_PER_NODE ranks
+# (experiment.sh; 40 x 32 since 2026-10-20, 8 x 16 in step 13); the per-member Python and
+# update_wrf_bc steps on one node each. Resumable: resubmit with the same arguments.
+# The 512-GB nodes (cirrus57-64, 121-128) are excluded: filter hung at exit in every run that included
+# some of them, and exited normally on the 256-GB nodes (step 13; obs_expansion.md Sec. 9, 2026-10-20).
 #   sbatch slurm.cycle 202505200000 202505200100       (1-hour pilot: cold start + 4 analyses)
 #   RUN_NAME=_hph sbatch slurm.cycle ...                    (run_hph/, output_hph/; hydrostatic PH is the
 #                                                            default since 2026-10-03, HYDROSTATIC_PH=0 for DART's)
@@ -19,6 +22,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --output=slurm.cycle.%j.out
 #SBATCH --exclusive
+#SBATCH --exclude=cirrus[57-64,121-128]
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
 EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0/config/experiment.sh

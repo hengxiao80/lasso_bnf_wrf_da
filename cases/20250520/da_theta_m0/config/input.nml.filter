@@ -241,7 +241,8 @@
    /
 
 # layout = 2 spreads the I/O tasks over the nodes; tasks_per_node must match the filter step's
-# ranks per node (16 in the gate job and in the step 13 plan).
+# ranks per node: prep_filter.sh replaces the 16 below with FILTER_TASKS_PER_NODE (experiment.sh; 32
+# since 2026-10-20, 16 in step 13), slurm.filter_scaling with each config's.
 &ensemble_manager_nml
    layout         = 2,
    tasks_per_node = 16

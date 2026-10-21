@@ -464,3 +464,53 @@ default configs 8x16, 40x16, 40x32. `mrms`: `config/input.nml.filter_mrms` (no i
 (`SCALE_SRC`, e.g. run 1's `output_madis`, which has `REFL_10CM`) with `obs_madis_mrms/<t>/obs_seq.mrms`; reference =
 the first config; default configs 40x16, 40x16:283x144, 40x32, 40x32:283x144. Smaller variant without 40 free nodes:
 `SCALE_CONFIGS="8x16 8x32 8x64" sbatch -N 8 slurm.filter_scaling` (ranks per node only).
+
+**First scaling test (job 1054410, 2026-10-20, `conv`, cancelled).** 8x16 replay of step 13's 00:30 analysis:
+bit-identical analyses for all 5 members (the setup and the 10-01 `filter` reproduce step 13 exactly), but the
+observation loop took 122 s against step 13's 96 s for the same 3,492 obs, and the step never exited: filter printed
+"Finished ... at" at 18:45:56 with all outputs written, then all ranks kept spinning at ~99 % CPU (in DART's final
+barrier or `MPI_Finalize`; `ptrace` is not permitted on the nodes, so no stack). Cancelled at 18:50 before 40x16 and
+40x32 ran. The job differed from `slurm.cycle` in its shape (128 tasks × 1 CPU per node, against 16 × 8) and its
+environment (no `OMP_*`, `ulimit -s unlimited`); filter's own launch (`srun -N 8 -n 128 --ntasks-per-node=16 -c 1
+--exact`), UCX settings, executable, namelist and inputs were the same. Changes (2026-10-20): `slurm.filter_scaling`
+now has `slurm.cycle`'s shape and environment; **filter exit guard** `run_filter` in `scripts/da/cycle_lib.sh`, used
+by `cycle_job.sh` and `slurm.filter_scaling`: once "Finished" is in `filter.log`, the step gets `FILTER_EXIT_GRACE`
+(120 s) to exit, then, if no output file has changed for 30 s, it is cancelled (`scancel` of the step) and the run
+counts as finished; logged as "filter exit guard" (also in `slurm.cycle`'s output) with `filter_exit_guard.txt` in
+the filter directory. Tested on the login node with stand-ins (normal exit, hang, crash, hang while writing).
+
+**Scaling test, `conv` (job 1054411, 2026-10-20, `slurm.cycle`'s shape and environment, nodes cirrus61–100).** Step 13's
+00:30 analysis (3,492 obs) replayed; s, from `filter.log` (wall includes the exit guard's ~2-min wait):
+
+| config | wall | read | H(x) | assim | ms/ob | rest | MaxRSS per rank | exit guard |
+|---|---|---|---|---|---|---|---|---|
+| 8x16 (step 13's) | 239 | 2 | 3 | 97 | 27.8 | 10 | 1.70 GB | fired |
+| 40x16 | 163 | 2 | 3 | 18 | 5.2 | 9 | 0.51 GB | fired |
+| 40x32 | 159 | 2 | 3 | 10 | 2.9 | 10 | 0.50 GB | fired |
+
+- **Analyses bit-identical** in all three configs, to each other and to step 13's: the rank count doesn't change the
+  results, so a new layout keeps runs comparable with step 13.
+- **Speed:** with `slurm.cycle`'s shape the 8x16 loop is step 13's again (97 s against 96 s; 122 s in job 1054410
+  with 128 × 1 per node and no `OMP_*`). 40x32 makes the loop ~10× faster and filter's own time ~25 s instead of ~112 s.
+- **Exit hang in every config** (guard cancelled steps .0, .1, .2 after 121 s; outputs complete). Not in step 13
+  (cirrus77–116, 10-02/03) with the same executable, inputs and environment. No library changes since then (Open MPI
+  2021 build, UCX 1.14 2024-12, Slurm 25.11.8 and MLNX OFED 5.8 installed 09-04, same kernel); `slurmd` was restarted
+  on all nodes 2026-10-14 09:20 (configuration change? unknown). All of today's configs included cirrus61–64, which
+  are 512-GB nodes (cirrus57–64 and 121–128; the rest 256 GB); step 13 used only 256-GB nodes. Not established which,
+  if any, of these is the cause.
+- **Diagnostic (job 1054413, 2026-10-20):** the 8x16 replay with the 512-GB nodes excluded
+  (`--exclude=cirrus[57-64,121-128]`; ran on cirrus49–56) **exited normally** (step COMPLETED, no guard), loop 96 s,
+  analyses bit-identical. With step 13 (cirrus77–116, never hung) and job 1054411 (every config included cirrus61–64,
+  every config hung), this points to the 512-GB nodes, though one clean run doesn't prove it. Job 1054411's test
+  directory kept as `tests/filter_scaling/conv_202505200030_job1054411/`.
+
+**Decisions (user, 2026-10-20) for runs 1–4, coded, not run:**
+- **Filter on 40 × 32** (`FILTER_NODES=40`, `FILTER_TASKS_PER_NODE=32`, `experiment.sh` defaults, overridable from
+  sbatch's environment; not in `settings.txt`, since the analyses don't depend on the layout). `prep_filter.sh` writes
+  32 into `tasks_per_node`; `driver.sh` stops at the start if `FILTER_NODES` exceeds the job's nodes (so a cold start
+  alone on fewer nodes needs `FILTER_NODES=<n>`), and logs the layout.
+- **512-GB nodes excluded:** `#SBATCH --exclude=cirrus[57-64,121-128]` in `slurm.cycle` and `slurm.filter_scaling`.
+- **Exit guard kept as a safety net, wait 30 s** (`FILTER_EXIT_GRACE`, was 120 s): normal exits take a few s after
+  "Finished", and the guard still waits for 30 s without output-file changes.
+- Still to do: the MRMS scaling test after run 1 (`SCALE_CASE=mrms SCALE_SRC=output_madis`), which gives the radar
+  ms per ob for runs 3–4 at 40 × 32 and the search-box setting; `MRMS_INFLATION` for run 4.

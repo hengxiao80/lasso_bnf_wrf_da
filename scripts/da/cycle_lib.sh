@@ -33,3 +33,59 @@ one_pass_mrms() { has_mrms && [ "${MRMS_FILTER}" = one_pass ]; }
 # Fields the DART-facing file carries besides wrfrst_dart.py's own (filter's hydrometeor and
 # REFL_10CM state, QNRAIN for wrfrst_dart.py qnrain).
 DART_EXTRA="QCLOUD QRAIN QSNOW QGRAUP REFL_10CM QNRAIN"
+
+# recently_changed <seconds> <files...>: prints the first existing file modified within <seconds>
+recently_changed() {
+   local age=$1 f now
+   shift
+   now=$(date +%s)
+   for f in "$@"; do
+      if [ -e "${f}" ] && [ $((now - $(stat -c %Y "${f}"))) -lt "${age}" ]; then echo "${f}"; return; fi
+   done
+}
+
+# run_filter <dir> <srun options...>: filter (DART_WORK/filter) as one srun step in <dir>, output in
+# <dir>/filter.log; returns 0 if filter finished ("Finished ... at" in filter.log), 1 otherwise.
+# Exit guard: on 2026-10-20 (slurm.filter_scaling, jobs 1054410 and 1054411) filter printed "Finished",
+# had written every output, and then all ranks kept spinning at 100 % CPU without exiting (in DART's
+# final barrier or MPI_Finalize). It happened in every run that included 512-GB nodes and in none
+# without (those nodes are now excluded in slurm.cycle; cause not established, obs_expansion.md
+# Sec. 9). Once "Finished" is in the log, the step gets FILTER_EXIT_GRACE s (default 30; a normal exit
+# takes a few s) to exit; if it hasn't, and no output file in <dir> or in output_list_d01.txt has
+# changed for 30 s, the step is cancelled (scancel; srun killed 60 s later if still there) and the
+# run counts as finished. Each firing is logged ("filter exit guard: ...") and leaves
+# <dir>/filter_exit_guard.txt.
+run_filter() {
+   local dir=$1; shift
+   local grace=${FILTER_EXIT_GRACE:-30} pid rc t_fin= t_cancel= step busy
+   rm -f "${dir}/filter_exit_guard.txt"
+   (cd "${dir}" && exec srun "$@" "${DART_WORK}/filter" > filter.log 2>&1) &
+   pid=$!
+   while kill -0 "${pid}" 2> /dev/null; do
+      if [ -z "${t_fin}" ]; then
+         ! grep -q 'Finished \.\.\. at' "${dir}/filter.log" 2> /dev/null || t_fin=${SECONDS}
+      elif [ -z "${t_cancel}" ] && [ $((SECONDS - t_fin)) -ge "${grace}" ]; then
+         busy=$(recently_changed 30 "${dir}"/*.nc $(cat "${dir}/output_list_d01.txt" 2> /dev/null))
+         if [ -z "${busy}" ]; then
+            step=$(squeue -h -s -j "${SLURM_JOB_ID}" -o '%i %j' | awk '$2 == "filter" {print $1}' | head -n 1)
+            log "filter exit guard: filter still running $((SECONDS - t_fin)) s after 'Finished' in ${dir}/filter.log; cancelling step ${step:-(not found, killing srun)}"
+            echo "$(date -u +%Y-%m-%dT%H:%M:%S) step ${step:-?} cancelled $((SECONDS - t_fin)) s after Finished" \
+               > "${dir}/filter_exit_guard.txt"
+            if [ -n "${step}" ]; then
+               scancel "${step}"
+            else
+               kill -INT "${pid}" 2> /dev/null; sleep 0.5; kill -INT "${pid}" 2> /dev/null || true
+            fi
+            t_cancel=${SECONDS}
+         fi
+      elif [ -n "${t_cancel}" ] && [ $((SECONDS - t_cancel)) -ge 60 ]; then
+         kill -KILL "${pid}" 2> /dev/null || true
+      fi
+      sleep 2
+   done
+   rc=0
+   wait "${pid}" || rc=$?
+   grep -q 'Finished \.\.\. at' "${dir}/filter.log" || return 1
+   [ "${rc}" -eq 0 ] || [ -n "${t_cancel}" ] || return 1
+   return 0
+}

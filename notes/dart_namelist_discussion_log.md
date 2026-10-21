@@ -385,3 +385,17 @@ Follows the two-pass entry (2026-10-14) and `notes/obs_expansion.md` Sec. 8.4.
 - Comments made precise in all three files. The `&model_nml` comment blocks of `input.nml.filter_mrms` and
   `input.nml.filter_joint` had been copied unchanged from pass 1 and gave pass 1's flags; rewritten to give each file's
   own (the namelist values themselves were right).
+
+## Filter layout 40 × 32 (`&ensemble_manager_nml :: tasks_per_node`) and the filter exit hang — 2026-10-20
+
+Details and numbers: `notes/obs_expansion.md` Sec. 9 (scaling test).
+
+- **Rank count doesn't change the analysis.** Step 13's 00:30 conventional analysis replayed at 8 × 16, 40 × 16 and
+  40 × 32 ranks (`layout = 2`, `tasks_per_node` = ranks per node): member analyses bit-identical to each other and to
+  step 13's. The observation loop: 97, 18, 10 s (27.8, 5.2, 2.9 ms per ob); memory 1.70, 0.51, 0.50 GB per rank.
+- **Decided (user, 2026-10-20): 40 × 32 for runs 1–4.** `tasks_per_node = 16` stays in the three namelists as the
+  placeholder `prep_filter.sh` replaces with `FILTER_TASKS_PER_NODE` (32).
+- **Not changed:** `&location_nml` `nlon`/`nlat` (71 × 36); the MRMS scaling test will compare ×4 (283 × 144) for the
+  radar pass, whose 18-km cutoff searches ~3 × 3 of the current ~19 × 27-km boxes.
+- **Exit hang:** filter hung after "Finished" on runs that included 512-GB nodes; those nodes are excluded, and
+  `run_filter` cancels a step still running 30 s after "Finished" (no output change for 30 s).

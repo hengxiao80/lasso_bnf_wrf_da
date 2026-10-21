@@ -85,13 +85,16 @@ SEC_TABLE=${SOFTWARE_DIR}/DART/assimilation_code/programs/gen_sampling_err_table
 GRID_FILE=${MEAN_DIR}/wrfinput_d01_2025-05-20_00_00_00   # filter's wrfinput_d01 (grid and shapes)
 
 # Resources inside the one 40-node allocation (Q7): each member's wrf.exe on 8 nodes,
-# 16 x 8 ranks x 8 threads; filter on FILTER_NODES x FILTER_TASKS_PER_NODE ranks (sets
-# &ensemble_manager_nml tasks_per_node).
+# 16 x 8 ranks x 8 threads; filter on FILTER_NODES x FILTER_TASKS_PER_NODE ranks, one CPU each
+# (prep_filter.sh sets &ensemble_manager_nml tasks_per_node). Filter on 40 x 32 since 2026-10-20 (user;
+# step 13 used 8 x 16): conventional pass at 00:30 with the observation loop 97 s -> 10 s, analyses
+# bit-identical to 8 x 16 (obs_expansion.md Sec. 9, scaling test job 1054411). Not recorded in
+# settings.txt, since the analyses don't depend on it; overridable from sbatch's environment.
 MEMBER_NODES=8
 NPROC_X=16
 NPROC_Y=8
-FILTER_NODES=8
-FILTER_TASKS_PER_NODE=16
+FILTER_NODES=${FILTER_NODES:-40}
+FILTER_TASKS_PER_NODE=${FILTER_TASKS_PER_NODE:-32}
 
 # 1: wrfrst_dart.py insert --hydrostatic-ph (PH from the analyzed MU, THM, QVAPOR instead of
 # DART's PH increment); 0 = DART's PH. Default 1 since 2026-10-03 (user, after step 13: it removes
