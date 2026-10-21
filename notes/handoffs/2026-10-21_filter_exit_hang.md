@@ -45,13 +45,24 @@ all others 256 GB.
 | 10-21 | 1054795.54 (run 1, 01:00) | 40 × 32 | same nodes | no | exited |
 | 10-21 | 1054799.0–.3 (MRMS scaling test: 40x32, 40x32:283x144, 40x64, 40x64:283x144) | 40 × 32, 40 × 64 | cirrus1–4, 17–52 | no | **all 4 hung** (guard) |
 | 10-21 | 1054801.11/.27/.43/.59 (run 2, 00:15–01:00) | 40 × 32 | cirrus1–4, 17–52 | no | **all 4 hung** (guard) |
+| 10-21 | run 3 `_madis_mrms1p` (job 1054809): 00:15 / 00:30 / 00:45 / 01:00 | 40 × 32 | cirrus1–4, 17–52 | no | exited / **hung** / **hung** / exited |
+
+**`wrf.exe` hangs too (2026-10-21, run 3, job 1054809).** Member 005's segment 00:45 → 01:00 (step 1054809.51, 8 nodes
+cirrus34–41, 16 × 8 ranks × 8 threads) printed "SUCCESS COMPLETE WRF" at 14:37:22 EDT and wrote complete `wrfout`
+and `wrfrst` (same size as the other members'), then the step kept running; cancelled by hand at 15:04:50 (27 min
+later), after which the cycle went on normally (`run_wrf_segment.sh` runs `srun ... || true` and judges success by
+the SUCCESS line). The other four members exited normally. This is the first `wrf.exe` hang seen; ~170 cycling
+`wrf.exe` steps exited normally before (step 13: 100, runs 1–2: 50, run 3: 19), besides the long WRF runs. WRF uses no MPI one-sided
+communication, so DART's windows (`win_mod.f90`) can't be the whole story; common to both programs: Open MPI 4.0.4
+with UCX 1.14 and hcoll, the same `UCX_TLS=self,sm,ud` and `UCX_UD_MLX5_RX_QUEUE_LEN=16384`, Slurm 25.11.8. Not checked
+whether the ranks were spinning (no `top` taken). `wrf.exe` has no exit guard; the cycle scripts would need one.
 
 What this says:
 - **The 512-GB-node explanation is refuted** by 1054795.22: it hung on 256-GB nodes only, on the same nodes where
   .6 and .38 exited. `slurm.cycle` and `slurm.filter_scaling` still `--exclude` those nodes; whether to keep that
   is for the user to decide after this investigation.
 - **It is intermittent**: same nodes, same binary, same layout, different outcome from one cycle to the next.
-- **Time:** 0 hangs in 21 runs on 10-02/03, 13 hangs in 17 multi-node runs since 10-20 (the MRMS test and run 2: 8 of 8). Between them: `slurmd` was
+- **Time:** 0 hangs in 21 runs on 10-02/03, 15 hangs in 21 multi-node filter runs since 10-20 (the MRMS test and run 2: 8 of 8; run 3: 2 of 4), and one `wrf.exe` hang (below). Between them: `slurmd` was
   restarted on all nodes 2026-10-14 09:20 (reason unknown); no library changes found (Open MPI 2021 build, UCX
   1.14 2024-12, Slurm 25.11.8 and MLNX OFED 5.8 installed 09-04, same kernel; `obs_expansion.md` Sec. 9). Only
   single-node runs before 10-20 used a 512-GB node.

@@ -447,8 +447,13 @@ ms/ob as soon as it finishes.
 | 2 | 00:30 | conv | 125 | 119 (guard) | 4 | 5 | 46 | 8,163 | 5.6 | 19 | 167 | 152 | 631 |
 | 2 | 00:45 | conv | 131 | 117 (guard) | 4 | 5 | 44 | 7,628 | 5.8 | 19 | 162 | 149 | 624 |
 | 2 | 01:00 | conv | 129 | 131 (guard) | 4 | 6 | 56 | 9,783 | 5.7 | 19 | 150 | 148 | 622 |
+| 3 `_madis_mrms1p` | 00:00 (cold start) | – | – | – | | | | | | | – | 153 | 154 |
+| 3 | 00:15 | joint | 135 | 90 | 4 | 9 | 40 | 88,332 | 0.5 | 25 | 174 | 146 | 622 |
+| 3 | 00:30 | joint | 127 | 129 (guard) | 4 | 9 | 46 | 91,099 | 0.5 | 25 | 189 | 150 | 676 |
+| 3 | 00:45 | joint | 129 | 127 (guard) | 4 | 9 | 43 | 91,733 | 0.5 | 25 | 181 | 1,774 (`wrf.exe` hang) | 2,292 |
+| 3 | 01:00 | joint | 131 | 119 | 4 | 9 | 64 | 93,756 | 0.7 | 26 | 172 | 147 | 650 |
 
-s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min.
+s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min; run 3 job 1054809 (same nodes), 73 min (27 of them the `wrf.exe` hang).
 sacct MaxRSS of run 1's filter steps 0.40, 1.99, 0.33, 2.00 GB per task (run 2: 1.99–2.00): unreliable for steps
 this short (sampled; the larger values in the steps that lived longer), so not used. Step 13's `rest` was 10–11 s.
 
@@ -660,3 +665,26 @@ runs).
 - **Cost against run 1:** 2.2–2.7× the obs (7,543–9,783, including ~1,060 evaluated altimeters), assim 43–56 s
   (5.7 ms/ob, about run 1's per ob), filter srun ~85–100 s without the guard's wait; prep, update and advance as in
   run 1. Cycle total 611–631 s.
+
+**Run 3 `_madis_mrms1p` (job 1054809, 2026-10-21, cirrus1–4, 17–52, 73 min): passed.** `obs_madis_mrms/`,
+`MRMS_FILTER=one_pass` (`input.nml.filter_joint`, 283 × 144 boxes, impact table `obs_impact_joint.txt`). All 4
+analyses `complete`, `check_cycle` passed, no CFL lines, `driver: done`. Filter exit guard fired at 00:30 and 00:45.
+- **`wrf.exe` hung at exit** (first time): member 005's 00:45 → 01:00 segment (step 1054809.51, cirrus34–41) printed
+  "SUCCESS COMPLETE WRF" and wrote complete outputs at 14:37:22 EDT, then didn't exit; cancelled by hand at 15:04:50,
+  after which the cycle continued normally (`run_wrf_segment.sh` judges by the SUCCESS line). Cost 27 min. Details in
+  `notes/handoffs/2026-10-21_filter_exit_hang.md`. `wrf.exe` has no exit guard.
+- **Radar per cycle (00:15 / 00:30 / 00:45 / 01:00):** `RADAR_REFLECTIVITY` 76,962 / 79,111 / 80,182 / 80,507 obs,
+  QC 7 **32 / 37 / 37 / 36 %**; prior RMS / bias 9.4 / +3.9, 11.0 / +4.5, 11.9 / +4.9, 12.3 / +4.8 dBZ; posterior
+  7.5 / +3.0, 7.4 / +3.0, 7.1 / +3.0, 6.7 / +2.8; obs-space prior spread 3.1, 5.0, 6.2, 7.3 dBZ. Clear air: QC 7
+  1–2 %, prior RMS 2.3 → 3.8 dBZ (model echo growing where MRMS is clear), posterior 1.8–1.9. The QC-7 fraction did
+  not fall as the spread grew; the prior fit gets worse each cycle (the observed echo area grows faster than the
+  model's) while the posterior fit holds at ~7 dBZ.
+- **Domain spread of the prior (00:15 → 01:00):** `REFL_10CM` 2.2 → 4.4 dBZ, QRAIN 3.2e-5 → 1.1e-4, QGRAUP 5.3e-5 →
+  8.2e-5. 00:15 mean increments: QCLOUD 1.2e-5 (3.3× run 1's), QRAIN 1.8e-5, QSNOW 1.7e-5, QGRAUP 2.4e-5, `REFL_10CM`
+  0.99 dBZ; U, THM ~20 % larger than run 1's. Conventional fits about as in run 1.
+- **Post-analysis |dpsfc/dt| (max of steps 2–4, hPa/3h):** 308 / 500 / 632 / 732, growing every cycle (run 1: 212 /
+  305 / 292 / 429); minutes 1–5 ~114 at 00:15; minutes 5–15 89–93, as in runs 1–2. The adjustment to the radar
+  increments grows with the hydrometeor increments but has died out within 5 min in every cycle so far.
+- **Cost:** one pass with 88–94 k obs, assim 40–64 s (0.5–0.7 ms/ob on average), filter srun ~90–120 s (guard
+  included where it fired); update 172–189 s (`qnrain` and 4 more inserted fields); cycle total 622–676 s apart from
+  the hang.
