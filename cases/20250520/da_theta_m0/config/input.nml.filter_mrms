@@ -21,9 +21,10 @@
 # SECOND (MRMS) PASS of the two-pass cycle (obs_expansion.md Sec. 8.4, 2026-10-14). Same as
 # input.nml.filter except: obs (RADAR_REFLECTIVITY and RADAR_CLEARAIR_REFLECTIVITY only, from
 # obs_seq.mrms), localization (18 km / 0.5 scale height), which state variables are written back
-# (HRRRDAS's radar pass), inflation (set by prep_filter.sh from MRMS_INFLATION) and
-# print_every_nth_obs. It runs in run/filter_mrms/ on the member files the first pass has just
-# updated in place. Keep the other blocks in step with input.nml.filter.
+# (HRRRDAS's radar pass), the impact table (obs_impact_mrms.txt, since 2026-10-21), inflation (set
+# by prep_filter.sh from MRMS_INFLATION) and print_every_nth_obs. It runs in run/filter_mrms/ on
+# the member files the first pass has just updated in place. Keep the other blocks in step with
+# input.nml.filter.
 #
 # Pilot settings carried over from the first pass's file:
 # 5-member, 15-min pilot (theta_m0 setup), pilot step 11. One fixed file for every cycle: the
@@ -128,6 +129,14 @@
 # 2 * cutoff * vert_normalization_scale_height = 2 * 0.0235 * 10.6 = 0.5.
 # Changing cutoff changes the vertical width too, unless the normalization is changed with it.
 # sampling_error_correction reads sampling_error_correction_table.nc from the run directory.
+# Impact table (since 2026-10-21, after run 4; obs_impact_mrms.txt, linked by prep_filter.sh): the
+# radar types -> QTY_PRESSURE (MU), QTY_GEOPOTENTIAL_HEIGHT (PH), QTY_SURFACE_PRESSURE (PSFC),
+# QTY_VERTICAL_VELOCITY (W): 0, the radar rows of obs_impact_joint.txt. NO_COPY_BACK (&model_nml)
+# only keeps these fields' increments out of the member files; DART still updated them and, with
+# MRMS_INFLATION = both, their adaptive inflation, which the next cycle's first pass applies (MU is
+# UPDATE there). With the table the radar obs skip them altogether, as in the one-pass run. Their
+# inflation is still damped here (MRMS_PASS2_DAMPING = 1). The NO_COPY_BACK flags stay: under both,
+# these fields' prior is inflated in this pass too.
 &assim_tools_nml
    cutoff                            = 0.001413,
    sort_obs_inc                      = .false.,
@@ -139,6 +148,9 @@
    convert_all_state_verticals_first = .true.
    convert_all_obs_verticals_first   = .true.
    print_every_nth_obs               = 10000,
+   adjust_obs_impact                 = .true.,
+   obs_impact_filename               = 'obs_impact_mrms.txt',
+   allow_any_impact_values           = .false.,
    /
 
 &cov_cutoff_nml

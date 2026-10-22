@@ -9,7 +9,8 @@
 #    config/obs_impact_joint.txt linked in as obs_impact_joint.txt.
 # mrms: the second pass of a two-pass run (observation set with MRMS, cycle_lib.sh two_pass), in
 #    run/filter_mrms/, on the member files the first pass has just updated: no extraction; input.nml
-#    from config/input.nml.filter_mrms, obs_seq.out -> obs/<t>/obs_seq.mrms; inflation by
+#    from config/input.nml.filter_mrms, obs_seq.out -> obs/<t>/obs_seq.mrms, the impact table
+#    config/obs_impact_mrms.txt (since 2026-10-21); inflation by
 #    MRMS_INFLATION: pass1 = none (inf_flavor 0, as in the file); both = INF_FLAVOR, from the first
 #    pass's postassim_priorinf_{mean,sd}.nc (output/<t>/filter/), inf_sd_lower_bound = INF_SD_LOWER_BOUND,
 #    with inf_damping = INF_DAMPING if MRMS_PASS2_DAMPING = 1 (default), else the file's 1.0.
@@ -101,8 +102,10 @@ fi
 ln -s "${GRID_FILE}" wrfinput_d01
 ln -s "${SEC_TABLE}" sampling_error_correction_table.nc
 ln -s "${obs}" obs_seq.out
-if grep -q "^ *adjust_obs_impact *= *\.true\." input.nml; then
-   cp "${CONFIG_DIR}/obs_impact_joint.txt" obs_impact_joint.txt
+if grep -q "^ *adjust_obs_impact *= *\.true\." input.nml; then   # the table input.nml names, from config/
+   imp=$(sed -n "s/^ *obs_impact_filename *= *'\([^']*\)'.*/\1/p" input.nml)
+   [ -n "${imp}" ] && [ -f "${CONFIG_DIR}/${imp}" ] || die "impact table '${imp}' not in ${CONFIG_DIR}"
+   cp "${CONFIG_DIR}/${imp}" "${imp}"
 fi
 for m in $(members); do echo "${RUN_DIR}/mem${m}/dart_d01.nc"; done > input_list_d01.txt
 cp input_list_d01.txt output_list_d01.txt

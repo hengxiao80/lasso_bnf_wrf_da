@@ -420,3 +420,33 @@ Numbers: `notes/obs_expansion.md` Sec. 9 (MRMS scaling test, job 1054799).
   over the cycles; radar threshold off or ~5 as a later variant.
 - **Also decided (user, 2026-10-21):** run 4 uses `MRMS_INFLATION = both` (details when it comes up); the impact
   table keeps conventional → `QTY_RADAR_REFLECTIVITY` at 0, as HRRRDAS.
+
+## Run 4 (two-pass MRMS): pass-2 damping on (`MRMS_PASS2_DAMPING = 1`) — 2026-10-21
+
+- **Decided (user, 2026-10-21):** run 4 uses `MRMS_INFLATION = both` with the default `MRMS_PASS2_DAMPING = 1`: the
+  MRMS pass damps the inflation it reads from the conventional pass with `inf_damping = 0.9` again (2026-10-15 entry),
+  so it is damped twice per cycle (0.81, e-folding ~1.2 h), which partly offsets inflating the spread twice per
+  cycle. Everything else as in runs 1–3 (`inf_flavor` 2, `inf_damping` 0.9, `inf_sd_lower_bound` 0.6), so that run 4
+  differs from run 3 only in one pass against two. `MRMS_PASS2_DAMPING = 0`, `MRMS_INFLATION = pass1`, 0.9956 and
+  flavor 5 with an evolving sd remain candidates for the inflation tests after run 4.
+
+- **Found in run 4 (2026-10-21): the MRMS pass lets radar obs adapt the inflation of MU, PH, W and PSFC**
+  (`notes/obs_expansion.md` Sec. 9, run 4). `NO_COPY_BACK` in `input.nml.filter_mrms` only stops those fields'
+  increments from being written back; DART still updates them and their inflation. In the one-pass run the impact
+  table's zeros (radar → `QTY_PRESSURE`, `QTY_GEOPOTENTIAL_HEIGHT`, `QTY_SURFACE_PRESSURE`, `QTY_VERTICAL_VELOCITY`)
+  skip both (`assim_tools_mod.f90:784-798`). Under `MRMS_INFLATION = both` the radar-adapted MU inflation reaches the
+  model through the next cycle's conventional pass (MU max 3.96 at 01:00 against 2.66 in run 3). **Proposed, not
+  made:** `&assim_tools_nml` `adjust_obs_impact = .true.` with a table of the 8 radar rows of `obs_impact_joint.txt` in
+  `input.nml.filter_mrms`; expected to leave the copied-back fields' analyses bit-identical (to be checked by a replay).
+  User to decide, with whether to rerun run 4 with it.
+- **Decided (user, 2026-10-21): fix, verify, rerun run 4. Done:** `config/obs_impact_mrms.txt` and in
+  `input.nml.filter_mrms` `adjust_obs_impact = .true.`, `obs_impact_filename = 'obs_impact_mrms.txt'`,
+  `allow_any_impact_values = .false.`; `prep_filter.sh` copies the table `obs_impact_filename` names. Replay of run 4's
+  00:30 MRMS pass without and with it (job 1054969): member files bit-identical, radar QC and fits unchanged, the
+  updated inflation different only in W, PH, MU, PSFC. `NO_COPY_BACK` on those fields kept (their prior is still
+  inflated in this pass under `both`).
+- **Rerun with the table (run 4b `_madis_mrms2p_imp`, 2026-10-22):** the MU inflation stays below run 3's (max 2.18
+  at 01:00), but the post-analysis shock is the same as run 4's (01:00 steps 2–4 1,114 against 1,119; run 3 732). The
+  table stays (the radar pass now treats MU, PH, W, PSFC as the one-pass run does), but run 4's larger shock comes from
+  the two passes themselves, most likely the second inflation per cycle (`MRMS_INFLATION=both`).
+

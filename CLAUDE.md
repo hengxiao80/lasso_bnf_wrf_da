@@ -48,10 +48,12 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 - **Mesonet** (2026-10-13/14): per-cycle selection and conversion (`scripts/da/make_cycle_mesonet.sh`, `select_mesonet_cycle.py`; options a / b1 / c, a first; list files and reference systems in `notes/mesonet_station_selection.md`). **Wired in** 2026-10-14: `MESONET` and `OBS_NAME` in `experiment.sh` (observation set `obs${OBS_NAME}/`), `LAND_SFC_*` in `input.nml.filter`; mesonet sites within 4 km of a same-window METAR are dropped because `wrf_dart_obs_preprocess`'s duplicate-location test is a ~2-km test under `r8 = r4` (`notes/obs_expansion.md` Sec. 7.2).
 - **MRMS reflectivity** (2026-10-14, `notes/obs_expansion.md` Sec. 8): `scripts/da/mrms_to_obs_seq.py` (Python port of HRRR's
   MRMS→DART program, HRRRDAS settings; also the preprocessor's boundary trim and error inflation). **Wired in (built
-  2026-10-14, not run) as a second filter pass, as HRRRDAS:** `MRMS=hrrrdas` in `experiment.sh` adds `<t>/obs_seq.mrms` to
+  2026-10-14, run 2026-10-21) as a second filter pass, as HRRRDAS:** `MRMS=hrrrdas` in `experiment.sh` adds `<t>/obs_seq.mrms` to
   an observation set (`obs_madis_mrms/`, `obs_meso_a_calmkeep_mrms/`), and a run on such a set runs filter twice per
-  cycle (`config/input.nml.filter`, then `config/input.nml.filter_mrms`), then `wrfrst_dart.py qnrain`. `MRMS_INFLATION`
-  (pass1 | both) has no default: undecided. Alternative per run, `MRMS_FILTER=one_pass` (no default either): one filter
+  cycle (`config/input.nml.filter`, then `config/input.nml.filter_mrms`, which has the impact table
+  `config/obs_impact_mrms.txt` since 2026-10-21: radar obs don't touch MU, PH, W, PSFC or their inflation), then
+  `wrfrst_dart.py qnrain`. `MRMS_INFLATION` (pass1 | both) has no default: undecided. Alternative per run,
+  `MRMS_FILTER=one_pass` (no default either): one filter
   on `<t>/obs_seq.joint` with `config/input.nml.filter_joint` and the impact table `config/obs_impact_joint.txt`.
   Design and open items: `notes/obs_expansion.md` Sec. 8.4–8.5.
   **WRF is patched** so `REFL_10CM` is in `wrfrst` (`patches/wrf_06d4240a_refl_10cm_restart.patch`, rebuilt and tested
@@ -60,9 +62,12 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   (`FILTER_NODES`/`FILTER_TASKS_PER_NODE` in `experiment.sh`; step 13 used 8 × 16). The scaling test
   (`slurm.filter_scaling`) gave bit-identical analyses for 8 × 16, 40 × 16 and 40 × 32, with the conventional
   observation loop at 00:30 going from 97 s to 10 s. Planned 1-hour runs (Sec. 9): `_madis`, `_meso_a`,
-  `_madis_mrms1p`, `_madis_mrms2p`, then one with everything. **Runs 1 (`_madis`) and 2 (`_meso_a`) passed
-  2026-10-21**; MRMS scaling test done (radar pass ~0.2 ms/ob, ~1 min of filter; `&location_nml` 283 × 144 in the two
-  MRMS namelists). Decided for runs 3–4: `outlier_threshold = 3` for all types, run 4 `MRMS_INFLATION=both`.
+  `_madis_mrms1p`, `_madis_mrms2p`, then one with everything. **Runs 1–4 passed 2026-10-21/22** (`_madis`, `_meso_a`,
+  `_madis_mrms1p`, `_madis_mrms2p`, plus 4b `_madis_mrms2p_imp` = run 4 with the MRMS impact table); MRMS scaling test
+  done (radar pass ~0.2 ms/ob, ~1 min of filter; `&location_nml` 283 × 144 in the two MRMS namelists).
+  `outlier_threshold = 3` for all types. Two passes with `MRMS_INFLATION=both` (and `MRMS_PASS2_DAMPING=1`) give a
+  ~50 % larger post-analysis shock than one pass from 00:45 on, not caused by the MU inflation (run 4b); next test
+  proposed: `MRMS_INFLATION=pass1`.
 - `model_mod_check`: interpolation test only (`test1thru = 0`) run 2026-09-22 in `cases/20250520/dart/mmc/`
   ("Finished successfully"; its `input.nml` is the ancestor of `input.nml.filter`); the fuller tests
   (`test1thru` > 0) deferred by the user.

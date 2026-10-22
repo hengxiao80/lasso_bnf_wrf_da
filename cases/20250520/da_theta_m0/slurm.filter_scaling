@@ -151,6 +151,10 @@ for c in ${CONFIGS}; do
    ln -s ${GRID_FILE} ${d}/wrfinput_d01
    ln -s ${SEC_TABLE} ${d}/sampling_error_correction_table.nc
    ln -s ${OBS} ${d}/obs_seq.out
+   if grep -q "^ *adjust_obs_impact *= *\.true\." ${d}/input.nml; then   # impact table, as prep_filter.sh
+      imp=$(sed -n "s/^ *obs_impact_filename *= *'\([^']*\)'.*/\1/p" ${d}/input.nml)
+      cp ${CONFIG_DIR}/${imp} ${d}/ || { echo "no impact table '${imp}' in ${CONFIG_DIR}"; exit 1; }
+   fi
    if [ ${CASE} = conv ]; then
       cp ${SRC}/${T}/filter/input_priorinf_{mean,sd}.nc ${d}/
    fi

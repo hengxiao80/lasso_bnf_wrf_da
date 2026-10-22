@@ -1,0 +1,149 @@
+#!/bin/bash
+# MRMS-pass impact table test (obs_expansion.md Sec. 9, run 4; 2026-10-21). Run 4 (_madis_mrms2p) showed
+# that in the MRMS pass the radar obs still update MU, PH, W, PSFC and their adaptive inflation
+# (NO_COPY_BACK only keeps the increments out of the member files). config/obs_impact_mrms.txt
+# (radar -> those 4 quantities: 0) stops that. This job replays one MRMS pass of a two-pass run with
+# MRMS_INFLATION=both twice on the same inputs, without and with the table, and checks that
+#   - the member files (the fields written back) are bit-identical,
+#   - the inflation (postassim_priorinf_*) differs only in W, PH, MU, PSFC,
+# and compares the timing and the radar QC. No WRF; the source run's files are only read.
+#
+# Inputs, from the source run (IMPACT_SRC, default output_madis_mrms2p) at IMPACT_T (default
+# 202505200030): that MRMS pass's own input.nml (filter_mrms/input.nml: inflation, damping, layout,
+# boxes as run; must have no impact table) and obs (obs_seq.out.path), the first pass's
+# postassim_priorinf_{mean,sd}.nc (what the MRMS pass read), and the first pass's priors
+# (memNNN/prior_d01.nc): the real MRMS pass ran on the first pass's analyses, which are not saved,
+# so the replay is not run 4's pass exactly, but both variants get the same inputs.
+# Output: tests/mrms_impact/<t>_<job>/{notable,table}/.
+#
+#   sbatch slurm.mrms_impact_test
+#   IMPACT_SRC=output_<run> IMPACT_T=202505200045 sbatch slurm.mrms_impact_test
+#
+# Job shape and environment as slurm.cycle; filter through run_filter (cycle_lib.sh), hcoll off.
+#SBATCH --job-name=mimpact520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:30:00
+#SBATCH --nodes=40
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.mrms_impact_test.%j.out
+#SBATCH --exclusive
+
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # run_filter
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+NMEM=5
+SRC=${EXP_DIR}/${IMPACT_SRC:-output_madis_mrms2p}
+T=${IMPACT_T:-202505200030}
+G=${EXP_DIR}/tests/mrms_impact/${T}_${SLURM_JOB_ID}
+TABLE=${CONFIG_DIR}/obs_impact_mrms.txt
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+set -e
+
+NML=${SRC}/${T}/filter_mrms/input.nml
+OBS=$(cat ${SRC}/${T}/filter_mrms/obs_seq.out.path)
+echo "source ${SRC} at ${T}: namelist ${NML}, obs ${OBS}, table ${TABLE}"
+[ -s ${NML} ] && [ -s ${OBS} ] && [ -s ${TABLE} ] || { echo "missing input"; exit 1; }
+! grep -q "^ *adjust_obs_impact *= *\.true\." ${NML} || { echo "${NML} already has an impact table"; exit 1; }
+grep -q "^   inf_flavor *= *[1-9]," ${NML} || { echo "${NML}: no prior inflation (not MRMS_INFLATION=both)"; exit 1; }
+tpn=$(sed -n 's/^ *tasks_per_node *= *\([0-9]*\).*/\1/p' ${NML})
+nodes=${FILTER_NODES}
+[ ${nodes} -le ${SLURM_NNODES} ] || { echo "FILTER_NODES ${nodes} > ${SLURM_NNODES} nodes"; exit 1; }
+for m in $(seq -f %03g 1 ${NMEM}); do
+   [ -s ${SRC}/${T}/mem${m}/prior_d01.nc ] || { echo "no ${SRC}/${T}/mem${m}/prior_d01.nc"; exit 1; }
+done
+rm -rf ${G}
+mkdir -p ${G}
+
+for v in notable table; do
+   d=${G}/${v}
+   mkdir -p ${d}
+   cp ${NML} ${d}/input.nml
+   if [ ${v} = table ]; then
+      sed -i "s/^\(   print_every_nth_obs *= *[0-9]*,\)\$/\1\n   adjust_obs_impact                 = .true.,\n   obs_impact_filename               = 'obs_impact_mrms.txt',\n   allow_any_impact_values           = .false.,/" ${d}/input.nml
+      grep -q "^   adjust_obs_impact *= *\.true\.," ${d}/input.nml || { echo "impact table not set"; exit 1; }
+      cp ${TABLE} ${d}/obs_impact_mrms.txt
+   fi
+   ln -s ${GRID_FILE} ${d}/wrfinput_d01
+   ln -s ${SEC_TABLE} ${d}/sampling_error_correction_table.nc
+   ln -s ${OBS} ${d}/obs_seq.out
+   cp ${SRC}/${T}/filter/postassim_priorinf_mean.nc ${d}/input_priorinf_mean.nc
+   cp ${SRC}/${T}/filter/postassim_priorinf_sd.nc ${d}/input_priorinf_sd.nc
+   : > ${d}/input_list_d01.txt
+   for m in $(seq -f %03g 1 ${NMEM}); do
+      mkdir -p ${d}/mem${m}
+      cp ${SRC}/${T}/mem${m}/prior_d01.nc ${d}/mem${m}/dart_d01.nc
+      echo ${d}/mem${m}/dart_d01.nc >> ${d}/input_list_d01.txt
+   done
+   cp ${d}/input_list_d01.txt ${d}/output_list_d01.txt
+
+   echo "=== ${v}: filter on ${nodes} nodes x ${tpn} ranks"
+   date
+   cd ${d}
+   SECONDS=0
+   run_filter ${d} -N ${nodes} -n $((nodes * tpn)) --ntasks-per-node=${tpn} -c 1 --exact \
+      || { echo "filter failed or did not finish for ${v}, see ${d}/filter.log"; tail -30 filter.log; exit 1; }
+   echo "${v}: ${SECONDS} s$([ ! -f filter_exit_guard.txt ] || echo ' (exit guard fired)')"
+   echo ${SECONDS} > wall_s.txt
+   echo "DART QC per type:"
+   ${PY} ${DA}/check_filter_gate.py obs ${d}/obs_seq.final
+done
+
+echo
+echo "=== member files (fields written back), table vs notable:"
+${PY} ${DA}/compare_dart_members.py \
+   $(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${G}/notable/mem${m}/dart_d01.nc; done | sed 's/,$//') \
+   $(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${G}/table/mem${m}/dart_d01.nc; done | sed 's/,$//')
+
+echo
+echo "=== inflation and means per variable, table vs notable (max |difference|, share of points that differ):"
+${PY} - ${G} <<'EOF'
+import sys
+import netCDF4
+import numpy as np
+g = sys.argv[1]
+for f in ['preassim_priorinf_mean', 'postassim_priorinf_mean', 'postassim_priorinf_sd', 'preassim_mean',
+          'postassim_mean']:
+    with netCDF4.Dataset(f'{g}/notable/{f}.nc') as a, netCDF4.Dataset(f'{g}/table/{f}.nc') as b:
+        diff = []
+        for v in a.variables:
+            if v not in b.variables or a[v].dtype.kind != 'f' or a[v].ndim < 2:
+                continue
+            x = np.asarray(a[v][:], dtype=np.float64)
+            y = np.asarray(b[v][:], dtype=np.float64)
+            d = np.abs(x - y)
+            if d.max() > 0:
+                diff.append(f'{v} {d.max():.3g} ({100 * (d > 0).mean():.0f} %)')
+        print(f'{f:24s}', '; '.join(diff) if diff else 'identical')
+EOF
+
+echo
+echo "=== timing, seconds"
+printf '%-8s %6s %5s %5s %6s %7s %6s %5s %6s\n' variant wall read 'H(x)' assim nobs ms/ob rest guard
+for v in notable table; do
+   ${PY} - ${G}/${v} ${v} <<'EOF'
+import os, sys
+sys.path.insert(0, '/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da')
+from summarize_cycle_timing import filter_phases
+d, v = sys.argv[1], sys.argv[2]
+p = filter_phases(f'{d}/filter.log')
+wall = open(f'{d}/wall_s.txt').read().strip()
+ms = f'{1000 * p["assim"] / p["nobs"]:.2f}' if p['nobs'] else '-'
+guard = 'fired' if os.path.exists(f'{d}/filter_exit_guard.txt') else '-'
+print(f'{v:<8} {wall:>6} {p["read"]:5.0f} {p["hx"]:5.0f} {p["assim"]:6.0f} {p["nobs"] or "-":>7} {ms:>6} {p["rest"]:5.0f} {guard:>6}')
+EOF
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%24,Elapsed,NNodes,NTasks,MaxRSS,State

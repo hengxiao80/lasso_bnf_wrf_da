@@ -401,7 +401,7 @@ A second way to take MRMS, chosen per run: **`MRMS_FILTER=one_pass`** (vs `two_p
 | 1 | MADIS (rerun of the reference) | `_madis` | one pass | `_madis` | nothing (set built) |
 | 2 | MADIS + mesonet (a), calm winds kept | `_meso_a_calmkeep` | one pass | `_meso_a` | nothing (set built) |
 | 3 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=one_pass` | `_madis_mrms1p` | nothing (set built) |
-| 4 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=two_pass` | `_madis_mrms2p` | choose `MRMS_INFLATION` (pass1 / both; open) |
+| 4 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=two_pass` | `_madis_mrms2p` | `MRMS_INFLATION=both`, `MRMS_PASS2_DAMPING=1` (decided 10-21) |
 | 5 | everything | to decide | to decide | to decide | decided after 1–4 |
 
 Run 2: the user first asked for calm winds dropped, then (2026-10-15) kept them ("does not matter really"), so it
@@ -452,8 +452,26 @@ ms/ob as soon as it finishes.
 | 3 | 00:30 | joint | 127 | 129 (guard) | 4 | 9 | 46 | 91,099 | 0.5 | 25 | 189 | 150 | 676 |
 | 3 | 00:45 | joint | 129 | 127 (guard) | 4 | 9 | 43 | 91,733 | 0.5 | 25 | 181 | 1,774 (`wrf.exe` hang) | 2,292 |
 | 3 | 01:00 | joint | 131 | 119 | 4 | 9 | 64 | 93,756 | 0.7 | 26 | 172 | 147 | 650 |
+| 4 `_madis_mrms2p` | 00:00 (cold start) | – | – | – | | | | | | | – | 153 | 154 |
+| 4 | 00:15 | conv | 133 | 56 | 5 | 7 | 21 | 2,781 | 7.6 | 16 | | | |
+| 4 | 00:15 | mrms | 1 | 60 | 4 | 10 | 17 | 85,551 | 0.2 | 22 | 175 | 146 | 670 |
+| 4 | 00:30 | conv | 127 | 60 | 5 | 7 | 23 | 3,492 | 6.6 | 18 | | | |
+| 4 | 00:30 | mrms | 2 | 62 | 4 | 11 | 16 | 87,607 | 0.2 | 23 | 195 | 151 | 692 |
+| 4 | 00:45 | conv | 127 | 61 | 5 | 7 | 22 | 3,058 | 7.2 | 17 | | | |
+| 4 | 00:45 | mrms | 1 | 62 | 4 | 10 | 17 | 88,675 | 0.2 | 23 | 174 | 148 | 670 |
+| 4 | 01:00 | conv | 124 | 69 | 4 | 8 | 31 | 4,851 | 6.4 | 17 | | | |
+| 4 | 01:00 | mrms | 0 | 63 | 4 | 10 | 17 | 88,905 | 0.2 | 23 | 172 | 150 | 678 |
+| 4b `_madis_mrms2p_imp` | 00:00 (cold start) | – | – | – | | | | | | | – | 154 | 155 |
+| 4b | 00:15 | conv | 131 | 56 | 5 | 7 | 21 | 2,781 | 7.6 | 16 | | | |
+| 4b | 00:15 | mrms | 2 | 60 | 4 | 10 | 17 | 85,551 | 0.2 | 23 | 180 | 147 | 673 |
+| 4b | 00:30 | conv | 129 | 63 | 4 | 7 | 23 | 3,492 | 6.6 | 18 | | | |
+| 4b | 00:30 | mrms | 1 | 65 | 4 | 11 | 17 | 87,607 | 0.2 | 22 | 175 | 170 | 702 |
+| 4b | 00:45 | conv | 123 | 60 | 4 | 7 | 21 | 3,058 | 6.9 | 20 | | | |
+| 4b | 00:45 | mrms | 2 | 62 | 5 | 10 | 17 | 88,675 | 0.2 | 22 | 197 | 199 | 742 |
+| 4b | 01:00 | conv | 128 | 70 | 5 | 8 | 32 | 4,851 | 6.6 | 17 | | | |
+| 4b | 01:00 | mrms | 1 | 62 | 4 | 11 | 16 | 88,905 | 0.2 | 23 | 174 | 146 | 676 |
 
-s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min; run 3 job 1054809 (same nodes), 73 min (27 of them the `wrf.exe` hang).
+s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min; run 3 job 1054809 (same nodes), 73 min (27 of them the `wrf.exe` hang); run 4 job 1054932 (same nodes), 48 min, no exit guard fired (filter with hcoll off from run 4 on; update, advance and total on the MRMS row); run 4b job 1054977 (same nodes), 49 min, no guard fired.
 sacct MaxRSS of run 1's filter steps 0.40, 1.99, 0.33, 2.00 GB per task (run 2: 1.99–2.00): unreliable for steps
 this short (sampled; the larger values in the steps that lived longer), so not used. Step 13's `rest` was 10–11 s.
 
@@ -688,3 +706,81 @@ analyses `complete`, `check_cycle` passed, no CFL lines, `driver: done`. Filter 
 - **Cost:** one pass with 88–94 k obs, assim 40–64 s (0.5–0.7 ms/ob on average), filter srun ~90–120 s (guard
   included where it fired); update 172–189 s (`qnrain` and 4 more inserted fields); cycle total 622–676 s apart from
   the hang.
+
+**Run 4 `_madis_mrms2p` (job 1054932, submitted 2026-10-21 22:25 EDT, cirrus1–4, 17–52).** `obs_madis_mrms/`,
+`MRMS_FILTER=two_pass` (`input.nml.filter`, then `input.nml.filter_mrms` on its result), `MRMS_INFLATION=both`.
+**Details decided (user, 2026-10-21): as runs 1–3 apart from the two passes**: `MRMS_PASS2_DAMPING=1` (pass 2 damps
+the inflation it reads from pass 1 again, effectively 0.9² = 0.81 per cycle), `INF_DAMPING=0.9`, `INF_FLAVOR=2`,
+`INF_SD_LOWER_BOUND=0.6`. First cycling run after the exit-hang fix (`notes/filter_exit_hang.md`, commit `32967aa`):
+filter with hcoll off (`run_filter`), `wrf.exe` exit guard in `run_wrf_segment.sh`, 512-GB nodes allowed again.
+**Passed** (48 min, cirrus1–4, 17–52): all 4 analyses `complete`, `check_cycle` passed, no CFL lines, `driver: done`.
+- **No exit hang:** all 8 filter steps (hcoll off) exited normally, no filter or `wrf.exe` guard fired.
+- **Radar (MRMS pass) per cycle (00:15 / 00:30 / 00:45 / 01:00), run 3 in brackets:** `RADAR_REFLECTIVITY` QC 7
+  32 / 36 / 36 / **33 %** (32 / 37 / 37 / 36); prior RMS / bias 9.4 / +3.9, 11.1 / +4.5, 12.1 / +4.9, 12.5 / +4.8 dBZ
+  (about run 3's); obs-space prior spread 3.1, 5.1, 6.5, **8.0** (3.1, 5.0, 6.2, 7.3); posterior 7.5 / +3.0, 7.4 /
+  +3.0, 7.0 / +3.0, **6.5 / +2.7** (7.5, 7.4, 7.1, 6.7). Clear air: QC 7 1–2 %, prior RMS 2.4 → 3.9, posterior
+  1.8–1.9. 00:15 is the same as run 3 to the digits shown (inflation still 1.0, and the conventional pass hardly moves
+  the radar priors); from 00:30 run 4 has more spread, slightly fewer outliers and a slightly better posterior.
+- **Domain prior spread at 01:00 (run 3):** U 1.51 (1.35) m/s, THM 1.05 (1.01) K, MU 69.2 (59.3) Pa, QRAIN 1.34e-4
+  (1.13e-4), QGRAUP 9.4e-5 (8.2e-5), `REFL_10CM` 4.75 (4.40) dBZ. METAR fits as in run 3 (01:00 T2 posterior 1.01 /
+  1.03 K, altimeter 0.77 / 0.79 hPa), with more prior spread (T2 0.55 / 0.50 K, U10 0.92 / 0.74 m/s, altimeter 0.65 /
+  0.54 hPa).
+- **Post-analysis |dpsfc/dt| (hPa/3h; max over members), run 3 in brackets:** steps 2–4 307 / 569 / 949 / **1,119**
+  (308 / 500 / 632 / 732); minutes 1–5 114 / 132 / 162 / 184 (114 / 128 / 141 / 148); **minutes 5–15 93 / 92 / 97 /
+  101** (93 / 92 / 92 / 90). The initial shock is 50 % larger than run 3's from 00:45 on, and for the first time the
+  minutes-5–15 value rises over the cycles (~10 % above runs 1–3 at 01:00).
+- **Radar obs change the inflation of W, PH, MU and PSFC in the MRMS pass (found 2026-10-21), unlike run 3.** Run 3's
+  impact table (`obs_impact_joint.txt`) sets radar → `QTY_PRESSURE` (MU), `QTY_GEOPOTENTIAL_HEIGHT`,
+  `QTY_SURFACE_PRESSURE`, `QTY_VERTICAL_VELOCITY` to 0, and DART skips such a state element for both the update and
+  the inflation update (`cov_and_impact_factors` ≤ 0 → `cycle STATE_UPDATE`, `assim_tools_mod.f90:784-798`).
+  `input.nml.filter_mrms` has no impact table; it makes those fields `NO_COPY_BACK`, which only stops the increments
+  from being written back. Checked in the 00:15 MRMS pass (`preassim_priorinf_mean` against `postassim_priorinf_mean`):
+  the radar obs changed the inflation at 25 % of the points of MU and PSFC (by up to 1.47), 17 % of W and PH (up to
+  1.86). Under `both` the next cycle's conventional pass starts from it, and there MU is `UPDATE` and inserted, so
+  radar-adapted MU inflation reaches the model (W is never inserted, PH is recomputed hydrostatically, PSFC is
+  `NO_COPY_BACK` in both passes but feeds the altimeter's H(x)). Final inflation at 01:00, mean / max (run 3): MU
+  1.165 / 3.96 (1.144 / 2.66), W 1.084 / 4.76 (1.042 / 2.71); U, THM, QVAPOR slightly lower than run 3's (damped
+  twice), hydrometeors and `REFL_10CM` slightly higher. Conventional-pass MU increment at 00:45 RMS 22.8 Pa (run 3:
+  18.9).
+- **So run 4 differs from run 3 in two ways that both enlarge the increments:** two inflations per cycle on all
+  fields (the MRMS pass's U increment at 00:45 alone, RMS 0.43 m/s, exceeds run 3's whole analysis, 0.38), and the
+  radar-adapted MU inflation. This run can't separate them.
+- **Fix (user, 2026-10-21: fix, verify, rerun run 4): impact table in the MRMS pass.** `config/obs_impact_mrms.txt`
+  (the 8 radar rows of `obs_impact_joint.txt`), `adjust_obs_impact = .true.` and `obs_impact_filename =
+  'obs_impact_mrms.txt'` in `input.nml.filter_mrms`'s `&assim_tools_nml`; `prep_filter.sh` (and
+  `slurm.filter_scaling`) now copy the table that `obs_impact_filename` names. Applies to every two-pass run from now
+  on (not recorded in `settings.txt`); runs 1–4 are finished. The `NO_COPY_BACK` flags stay (under `both` these
+  fields' prior is still inflated in the MRMS pass, and their inflation still damped there).
+- **Replay test (job 1054969, `slurm.mrms_impact_test`, cirrus1–4, 17–52, 3.4 min):** run 4's 00:30 MRMS pass (its
+  own `input.nml`, pass 1's `postassim_priorinf_*`, `obs_seq.mrms`; members: run 4's 00:30 priors, since the pass-1
+  analyses it really ran on are not saved) without and with the table, same inputs. **Member files of all 5 members
+  bit-identical**; `obs_seq.final` QC and fits the same (reflectivity 28,690 outliers, prior 11.1 / +4.49, posterior
+  7.38 / +3.02 dBZ, both); `preassim_priorinf_*`, `postassim_priorinf_sd`, `preassim_mean` identical;
+  `postassim_priorinf_mean` and `postassim_mean` differ only in W, PH, MU, PSFC (inflation at 18–26 % of their
+  points, by up to 1.2–2.0). Filter 67 / 62 s, assimilation 16 s in both. Output: `tests/mrms_impact/202505200030_1054969/`.
+- **Cost:** filter per cycle ~120–130 s (two sruns of 56–69 and 60–63 s, no guard), against run 3's 90–129 s with
+  guards; the MRMS pass's prep ~1 s (no extraction). Update 172–195 s, advance 146–151 s, cycle total 670–692 s
+  (run 3: 622–676 without the hang). **Disk:** `output_madis_mrms2p/` 474 GB (both passes' member files kept),
+  `run_madis_mrms2p/` 77 GB.
+
+**Run 4b `_madis_mrms2p_imp` (job 1054977, submitted 2026-10-21 23:44 EDT, cirrus1–4, 17–52):** run 4 again with the
+MRMS-pass impact table (user, 2026-10-21), everything else the same (`OBS_NAME=_madis_mrms MRMS_FILTER=two_pass
+MRMS_INFLATION=both`, `MRMS_PASS2_DAMPING=1`, damping 0.9, flavor 2, sd 0.6). Compared with run 4 it shows how much of
+the larger post-analysis shock came from the radar-adapted MU inflation; compared with run 3, the effect of two passes
+alone. **Passed** (49 min, cirrus1–4, 17–52): all 4 analyses `complete`, `check_cycle` passed, no CFL lines, no exit
+guard, `driver: done`.
+- **The table works as intended:** `prep_filter.sh` copied `obs_impact_mrms.txt` and filter read it; in the 00:15 MRMS
+  pass the inflation of W, PH, MU, PSFC changed at 0 % of the points (run 4: 17–25 %), U, THM, QRAIN, T2 as in run 4;
+  the five 00:15 analyses bit-identical to run 4's (the inflation acts from the next cycle on).
+- **But the shock is unchanged.** Post-analysis |dpsfc/dt| (max over members, hPa/3h), runs 3 / 4 / 4b: steps 2–4
+  at 00:30 500 / 569 / 570, 00:45 632 / 949 / 939, 01:00 732 / 1,119 / 1,114; minutes 5–15 at 01:00 90 / 100 / 100.
+  Final MU inflation (max) at 01:00 2.66 / 3.96 / **2.18** (below run 3's: damped twice, updated by the conventional
+  obs only); prior MU spread at 01:00 59.3 / 69.2 / 66.2 Pa; conventional-pass MU increment at 00:45 RMS 18.9 / 22.8 /
+  21.8 Pa. **So the radar-adapted MU inflation was not the cause of run 4's larger shock: the two passes are.** The
+  likeliest mechanism is the second inflation of the spread per cycle (U spread at 01:00 1.35 / 1.51 / 1.51 m/s; the
+  MRMS pass's U increment alone exceeds run 3's whole analysis), which `MRMS_INFLATION=pass1` would test; not shown.
+- **Everything else as run 4:** radar 01:00 QC 7 33 %, prior 12.5 / +4.77, spread 7.97, posterior 6.53 / +2.65 dBZ;
+  METAR fits the same (T2 posterior 1.01 K, altimeter 0.77 hPa).
+- **Cost** as run 4 (cycle 673–742 s); the 742 s at 00:45 is member 005's `wrf.exe` integrating slowly (180 steps in
+  131 s against 73 s for member 001; no hang, no guard), as in run 1's split node set. Disk: `output_madis_mrms2p_imp/`
+  474 GB, `run_madis_mrms2p_imp/` 77 GB.
