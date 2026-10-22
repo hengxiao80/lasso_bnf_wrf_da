@@ -121,13 +121,16 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   jobs (`slurm.wrf`): `UCX_TLS=self,sm,ud` and `UCX_UD_MLX5_RX_QUEUE_LEN=16384`; without them the
   larger 500-m runs fail on MPI communication (no speed difference at 2.5 km). `real.exe` jobs
   (`slurm.real`): `UCX_TLS=rc,xpmem,self`, as in sey's real.exe job.
-- **DART filter sometimes hangs at exit**: all ranks keep spinning after "Finished ... at", outputs complete.
-  First blamed on the 512-GB nodes (cirrus57–64, 121–128; every multi-node run with some of them hung on 10-20), but
-  run 1 hung once in four cycles on 256-GB nodes only (2026-10-21): intermittent, cause not established
-  (investigation: `notes/handoffs/2026-10-21_filter_exit_hang.md`). `slurm.cycle` and `slurm.filter_scaling` still
-  `--exclude` the 512-GB nodes, and `run_filter` (`scripts/da/cycle_lib.sh`, used by `cycle_job.sh`) cancels a filter step that
-  hasn't exited 30 s after "Finished" (`FILTER_EXIT_GRACE`), logging "filter exit guard". (2026-10-20,
-  `notes/obs_expansion.md` Sec. 9.)
+- **hcoll hangs MPI programs at exit; filter runs with `OMPI_MCA_coll_hcoll_enable=0`** (2026-10-21,
+  `notes/filter_exit_hang.md`). With hcoll (Open MPI's default here), filter on 40 × 32 often never exited after
+  "Finished ... at": in `MPI_Finalize` one node-leader rank never finished closing hcoll's UCX connections
+  (`hcoll_context_free` → `hmca_bcol_ucx_p2p_disconnect`) and all others waited in the last fence. hcoll off: no hang
+  in 11 runs, analyses bit-identical, step as fast. Set in `run_filter` (`scripts/da/cycle_lib.sh`), which keeps its exit
+  guard (cancels a step not exited 30 s after "Finished", logs "filter exit guard"). The 512-GB nodes, once blamed, are
+  no longer excluded. `wrf.exe` hung once after SUCCESS (2026-10-21, run 3) but **keeps hcoll**: off makes its
+  integration ~30 % slower (outputs identical); instead `run_wrf_segment.sh` has an exit guard (snapshot of a step not
+  exited 30 s after SUCCESS, then cancel; "wrf exit guard"). Stacks of a hung step without ptrace:
+  `scripts/da/hang_snapshot.py` (perf) and `hang_summary.py`.
 - **Every DART state variable must also be in filter's `wrfinput_d01`** (`GRID_FILE` in `experiment.sh`): WRF
   `model_mod` takes each state variable's shape from it, not only the static grid. `real.exe`'s `wrfinput` lacks
   `REFL_10CM`, so `GRID_FILE` is `mean/dart_wrfinput_d01_2025-05-20_00_00_00` (`scripts/da/make_grid_file.py`);

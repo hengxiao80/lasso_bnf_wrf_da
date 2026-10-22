@@ -1,0 +1,107 @@
+#!/bin/bash
+# wrf.exe with and without hcoll (notes/filter_exit_hang.md): one member's 15-min restart segment, run 1's
+# (run_madis) member 001 from 01:15 to 01:30 (its wrfrst at 01:15, written by WRF, and its 01:00 refit wrfbdy,
+# both copied here first), run WRF_REPEATS times (default 4) on 8 nodes as a cycling member (16 x 8 ranks x
+# 8 threads, run_wrf_segment.sh with its exit guard), alternately with MPI defaults (hcoll on) and with
+# OMPI_MCA_coll_hcoll_enable=0. Each run's wrfout and wrfrst at 01:30 against the first run's (cmp, then per
+# variable if they differ). Timings from rsl.error.0000 (start-up: restart file and lateral boundary;
+# integration: sum over the steps; writes), the segment's wall time, and seconds from SUCCESS (rsl.out.0000's
+# last change) to the end of run_wrf_segment.sh (its exit check polls every 2 s).
+# Output in tests/wrf_hcoll/<job>/rep<N>/ (rsl files and namelist kept; wrfout, wrfrst and the copied inputs
+# deleted at the end).
+#   sbatch slurm.wrf_hcoll_test
+#SBATCH --job-name=whcoll520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:40:00
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.wrf_hcoll_test.%j.out
+#SBATCH --exclusive
+
+EXP_SH=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
+source ${EXP_SH}
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # log
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+REPEATS=${WRF_REPEATS:-4}
+VARIANTS=("" "OMPI_MCA_coll_hcoll_enable=0")
+SRC=${EXP_DIR}/run_madis/mem001
+START=2025-05-20_01:15:00
+END_FT=2025-05-20_01_30_00
+G=${EXP_DIR}/tests/wrf_hcoll/${SLURM_JOB_ID}
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+echo "nodes: ${SLURM_JOB_NODELIST}; ${REPEATS} repeats; variants: (1) MPI defaults, hcoll on; (2) ${VARIANTS[1]}"
+mkdir -p ${G}/input
+log "copying ${SRC}/wrfrst_d01_${START//:/_} and ${SRC}/bdy/wrfbdy_d01"
+cp ${SRC}/wrfrst_d01_${START//:/_} ${SRC}/bdy/wrfbdy_d01 ${G}/input/ || { echo "copy failed"; exit 1; }
+
+# wrf_timing <rsl.error.0000>: start-up, integration, steps, wrfout write, restart write (s)
+wrf_timing() {
+   awk '/Timing for processing (restart file|lateral boundary)/ {init += $(NF-2)}
+        /Timing for main/ {integ += $(NF-2); n++}
+        /Timing for Writing wrfout/ {wo += $(NF-2)}
+        /Timing for Writing restart/ {rs += $(NF-2)}
+        END {printf "%6.1f %6.1f %5d %6.1f %6.1f", init, integ, n, wo, rs}' "$1"
+}
+
+for i in $(seq 1 ${REPEATS}); do
+   k=$(( (i - 1) % 2 ))
+   d=${G}/rep${i}
+   mkdir -p ${d}
+   echo "$((k + 1)) ${VARIANTS[k]}" > ${d}/variant.txt
+   log "=== repeat ${i}: variant $((k + 1)): ${VARIANTS[k]:-MPI defaults, hcoll on}"
+   SECONDS=0
+   env ${VARIANTS[k]} SRUN_OPTS="-N 8 --ntasks-per-node=16 -c 8 --exact" RESTART=.true. RESTART_INTERVAL=15 \
+      ${DA}/run_wrf_segment.sh ${EXP_SH} ${d} ${START} 900 ${G}/input/wrfrst_d01_${START//:/_} \
+      ${G}/input/wrfbdy_d01 16 8 > ${d}/segment.log 2>&1
+   rc=$?
+   t_end=$(date +%s)
+   echo ${SECONDS} > ${d}/wall_s.txt
+   cat ${d}/segment.log
+   echo $((t_end - $(stat -c %Y ${d}/rsl.out.0000))) > ${d}/exit_s.txt
+   log "repeat ${i}: status ${rc}, ${SECONDS} s, $(cat ${d}/exit_s.txt) s from SUCCESS to the end" \
+      "$([ ! -f ${d}/wrf_exit_guard.txt ] || echo '(exit guard fired)')"
+   [ ! -f ${d}/hang_snapshot_summary.txt ] || cat ${d}/hang_snapshot_summary.txt
+   [ ${rc} = 0 ] || { echo "segment failed, see ${d}"; continue; }
+   if [ ${i} -gt 1 ]; then
+      : > ${d}/compare.txt
+      for f in wrfout_d01_${END_FT} wrfrst_d01_${END_FT}; do
+         if cmp -s ${G}/rep1/${f} ${d}/${f}; then
+            echo "${f}: identical" >> ${d}/compare.txt
+         else
+            echo "${f}: differs (cmp); per variable:" >> ${d}/compare.txt
+            ${PY} ${DA}/compare_dart_members.py ${G}/rep1/${f} ${d}/${f} >> ${d}/compare.txt 2>&1
+         fi
+      done
+      echo "against repeat 1:"; cat ${d}/compare.txt
+      rm -f ${d}/wrfout_d01_* ${d}/wrfrst_d01_${END_FT}
+   fi
+done
+rm -f ${G}/rep1/wrfout_d01_* ${G}/rep1/wrfrst_d01_${END_FT}
+rm -rf ${G}/input
+
+echo
+echo "=== summary (8 nodes, 16 x 8 ranks x 8 threads; s; exit = SUCCESS to end, polled every 2 s)"
+printf '%-6s %-7s %6s %5s %6s %6s %5s %6s %6s  %s\n' repeat variant wall exit start integ steps wrfout rst \
+   'vs repeat 1 (wrfout, wrfrst)'
+for i in $(seq 1 ${REPEATS}); do
+   d=${G}/rep${i}
+   cmpres=$( [ ${i} = 1 ] && echo reference || awk '/^wrf/ {printf "%s ", $2}' ${d}/compare.txt 2> /dev/null)
+   printf '%-6s %-7s %6s %5s %s  %s\n' ${i} $(cut -d' ' -f1 ${d}/variant.txt) $(cat ${d}/wall_s.txt) \
+      $(cat ${d}/exit_s.txt) "$(wrf_timing ${d}/rsl.error.0000)" "${cmpres}"
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%28,Elapsed,NNodes,NTasks,MaxRSS,State

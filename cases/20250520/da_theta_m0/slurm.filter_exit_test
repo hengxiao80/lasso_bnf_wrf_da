@@ -1,0 +1,197 @@
+#!/bin/bash
+# Filter exit hang test (notes/filter_exit_hang.md): a saved analysis replayed EXIT_REPEATS times with filter on
+# EXIT_NODES x EXIT_TPN ranks (default 40 x 32, as in the cycle). Each repeat: fresh copies of the 5 priors, filter as
+# one srun step, then the analyses against the case's reference; the member and other netCDF files are deleted
+# afterwards (logs kept). If filter hasn't exited EXIT_GRACE s (default 20) after "Finished ... at", a snapshot of
+# every filter process is taken on every node (scripts/da/hang_snapshot.py: thread states, CPU, wait channels, perf
+# call stacks), summarized (hang_summary.py), and the step is cancelled.
+#
+# Cases (EXIT_CASE):
+#   conv  (default) step 13's _hph analysis at 00:30 (3,492 obs; slurm.filter_scaling's conv case); reference:
+#         its analyses (output_hph/<t>/memNNN/analysis_d01.nc).
+#   mrms  the MRMS scaling test's 40x32:283x144 config (job 1054799; 85,551 radar obs, no inflation): its
+#         input.nml, run 1's priors at 00:15 (output_madis/<t>/memNNN/prior_d01.nc), obs_madis_mrms/<t>/obs_seq.mrms;
+#         reference: that config's analyses (tests/filter_scaling/mrms_<t>/40x32_283x144/memNNN/dart_d01.nc).
+#
+# Settings for the filter step only (env ... srun): EXIT_TEST_ENV, space-separated VAR=value; or EXIT_VARIANTS,
+# several such settings separated by '|' and taken in turn over the repeats, so variants are compared on the same
+# nodes in one job. An empty setting = MPI defaults, hcoll on (the cycle runs filter with hcoll off since 2026-10-21).
+#
+#   sbatch slurm.filter_exit_test                                            (conv, current settings)
+#   EXIT_TEST_LABEL=nohcoll EXIT_TEST_ENV="OMPI_MCA_coll_hcoll_enable=0" EXIT_REPEATS=8 sbatch slurm.filter_exit_test
+#   EXIT_CASE=mrms EXIT_TEST_LABEL=mrms3 EXIT_REPEATS=6 \
+#     EXIT_VARIANTS="|OMPI_MCA_coll_hcoll_enable=0|HCOLL_BCOL_UCX_P2P_PRECONNECT_NP=2048" sbatch slurm.filter_exit_test
+#
+# Output in tests/filter_exit/<label>_<job>/rep<N>/ (filter.log, variant.txt, exit.txt, snapshot/,
+# snapshot_summary.txt, compare.txt), hcoll_info.txt (hcoll's parameters) in <label>_<job>/.
+# Shape and environment as slurm.cycle (16 tasks x 8 CPUs per node, OMP_*, stack limit, UCX).
+#SBATCH --job-name=fexit520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:40:00
+#SBATCH --nodes=40
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=slurm.filter_exit_test.%j.out
+#SBATCH --exclusive
+
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # log
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+NMEM=5
+CASE=${EXIT_CASE:-conv}
+case ${CASE} in
+conv)
+   T=202505200030
+   SRC=${EXP_DIR}/output_hph/${T}
+   PRIOR=prior_d01.nc
+   NML=${SRC}/filter/input.nml
+   OBS=$(cat ${SRC}/filter/obs_seq.out.path)
+   INF="${SRC}/filter/input_priorinf_mean.nc ${SRC}/filter/input_priorinf_sd.nc"
+   REFDIR=${SRC}; REFFILE=analysis_d01.nc ;;
+mrms)
+   T=202505200015
+   SRC=${EXP_DIR}/output_madis/${T}
+   PRIOR=prior_d01.nc
+   REFDIR=${EXP_DIR}/tests/filter_scaling/mrms_${T}/40x32_283x144; REFFILE=dart_d01.nc
+   NML=${REFDIR}/input.nml
+   OBS=${EXP_DIR}/obs_madis_mrms/${T}/obs_seq.mrms
+   INF= ;;
+*) echo "EXIT_CASE=${CASE}: conv or mrms"; exit 1 ;;
+esac
+NODES=${EXIT_NODES:-40}
+TPN=${EXIT_TPN:-32}
+REPEATS=${EXIT_REPEATS:-4}
+GRACE=${EXIT_GRACE:-20}
+LABEL=${EXIT_TEST_LABEL:-base}
+G=${EXP_DIR}/tests/filter_exit/${LABEL}_${SLURM_JOB_ID}
+IFS='|' read -r -a VARIANTS <<< "${EXIT_VARIANTS-${EXIT_TEST_ENV:-}}"
+[ ${#VARIANTS[@]} -gt 0 ] || VARIANTS=("")
+[[ "${EXIT_VARIANTS-}" != *'|' ]] || VARIANTS+=("")   # read drops a trailing empty field
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+echo "label ${LABEL}: ${CASE} case, ${REPEATS} repeats of ${SRC} on ${NODES} x ${TPN}, grace ${GRACE} s"
+for k in "${!VARIANTS[@]}"; do
+   echo "variant $((k + 1)) (filter step environment): ${VARIANTS[k]:-(MPI defaults, hcoll on)}"
+done
+echo "nodes: ${SLURM_JOB_NODELIST}"
+[ ${NODES} -le ${SLURM_NNODES} ] || { echo "${NODES} nodes > ${SLURM_NNODES}"; exit 1; }
+[ -s "${OBS}" ] && [ -s "${NML}" ] || { echo "missing ${OBS} or ${NML}"; exit 1; }
+for f in ${INF}; do [ -s ${f} ] || { echo "missing ${f}"; exit 1; }; done
+for m in $(seq -f %03g 1 ${NMEM}); do
+   [ -s ${SRC}/mem${m}/${PRIOR} ] && [ -s ${REFDIR}/mem${m}/${REFFILE} ] \
+      || { echo "no prior or reference for member ${m}"; exit 1; }
+done
+mkdir -p ${G}
+REF=$(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${REFDIR}/mem${m}/${REFFILE}; done)
+echo "reference: ${REFDIR}/memNNN/${REFFILE}"
+# hcoll's parameters and defaults (hcoll_info needs an HCA, so not on the login node)
+srun -N 1 -n 1 -c 1 --exact /opt/mellanox/hcoll/bin/hcoll_info -a > ${G}/hcoll_info.txt 2>&1 || true
+
+# filter_with_snapshot <dir> <environment> <srun options...>: as run_filter (cycle_lib.sh), but a hang gets a
+# snapshot before the step is cancelled. Writes <dir>/exit.txt: "exited <s>" (seconds from "Finished" seen to
+# srun's end), "hung" or "no Finished".
+filter_with_snapshot() {
+   local dir=$1 vars=$2; shift 2
+   local pid t_fin= t_cancel= step t_end
+   (cd ${dir} && exec env ${vars} srun "$@" ${DART_WORK}/filter > filter.log 2>&1) &
+   pid=$!
+   while kill -0 ${pid} 2> /dev/null; do
+      if [ -z "${t_fin}" ]; then
+         ! grep -q 'Finished \.\.\. at' ${dir}/filter.log 2> /dev/null || t_fin=$(date +%s.%N)
+      elif [ -z "${t_cancel}" ] && (( $(date +%s) - ${t_fin%.*} >= GRACE )); then
+         step=$(squeue -h -s -j ${SLURM_JOB_ID} -o '%i %j' | awk '$2 == "filter" {print $1}' | head -n 1)
+         log "hang: filter step ${step} still running ${GRACE} s after 'Finished'; snapshot"
+         timeout 900 srun --overlap -N ${SLURM_NNODES} --ntasks-per-node=1 -c 4 \
+            ${PY} ${DA}/hang_snapshot.py ${dir}/snapshot filter --secs 2 --freq 29 > ${dir}/snapshot.log 2>&1 \
+            || log "snapshot step failed or timed out (${dir}/snapshot.log)"
+         log "snapshot done; cancelling ${step}"
+         ${PY} ${DA}/hang_summary.py ${dir}/snapshot > ${dir}/snapshot_summary.txt 2>&1
+         scancel ${step}
+         t_cancel=$(date +%s)
+         echo hung > ${dir}/exit.txt
+      elif [ -n "${t_cancel}" ] && (( $(date +%s) - t_cancel >= 90 )); then
+         kill -KILL ${pid} 2> /dev/null || true
+      fi
+      sleep 0.5
+   done
+   wait ${pid}
+   t_end=$(date +%s.%N)
+   if [ -z "${t_fin}" ]; then
+      grep -q 'Finished \.\.\. at' ${dir}/filter.log && t_fin=${t_end}
+   fi
+   if [ -z "${t_fin}" ]; then
+      echo "no Finished" > ${dir}/exit.txt
+   elif [ -z "${t_cancel}" ]; then
+      awk -v a=${t_end} -v b=${t_fin} 'BEGIN {printf "exited %.1f\n", a - b}' > ${dir}/exit.txt
+   fi
+}
+
+for i in $(seq 1 ${REPEATS}); do
+   d=${G}/rep${i}
+   k=$(( (i - 1) % ${#VARIANTS[@]} ))
+   mkdir -p ${d}
+   echo "$((k + 1)) ${VARIANTS[k]}" > ${d}/variant.txt
+   sed "s/tasks_per_node = [0-9]*\$/tasks_per_node = ${TPN}/" ${NML} > ${d}/input.nml
+   grep -q "tasks_per_node = ${TPN}\$" ${d}/input.nml || { echo "tasks_per_node not set"; exit 1; }
+   ln -s ${GRID_FILE} ${d}/wrfinput_d01
+   ln -s ${SEC_TABLE} ${d}/sampling_error_correction_table.nc
+   ln -s ${OBS} ${d}/obs_seq.out
+   [ -z "${INF}" ] || cp ${INF} ${d}/
+   : > ${d}/input_list_d01.txt
+   for m in $(seq -f %03g 1 ${NMEM}); do
+      mkdir -p ${d}/mem${m}
+      cp ${SRC}/mem${m}/${PRIOR} ${d}/mem${m}/dart_d01.nc &
+      echo ${d}/mem${m}/dart_d01.nc >> ${d}/input_list_d01.txt
+   done
+   wait
+   cp ${d}/input_list_d01.txt ${d}/output_list_d01.txt
+
+   log "=== repeat ${i}: filter on ${NODES} x ${TPN}, variant $((k + 1)): ${VARIANTS[k]:-(MPI defaults, hcoll on)}"
+   SECONDS=0
+   filter_with_snapshot ${d} "${VARIANTS[k]}" -N ${NODES} -n $((NODES * TPN)) --ntasks-per-node=${TPN} -c 1 --exact
+   echo ${SECONDS} > ${d}/wall_s.txt
+   log "repeat ${i}: $(cat ${d}/exit.txt), ${SECONDS} s"
+   [ ! -f ${d}/snapshot_summary.txt ] || cat ${d}/snapshot_summary.txt
+   new=$(for m in $(seq -f %03g 1 ${NMEM}); do printf '%s,' ${d}/mem${m}/dart_d01.nc; done)
+   ${PY} ${DA}/compare_dart_members.py ${REF%,} ${new%,} > ${d}/compare.txt 2>&1
+   echo "analyses vs reference: $(grep -c ': identical' ${d}/compare.txt) of ${NMEM} identical"
+   grep -v ': identical' ${d}/compare.txt || true
+   rm -f ${d}/mem*/dart_d01.nc ${d}/*.nc
+done
+
+echo
+echo "=== summary (${LABEL}, ${CASE}, ${NODES} x ${TPN}; exit = s from 'Finished' seen to srun's end;" \
+   "filter.log phases in s)"
+for k in "${!VARIANTS[@]}"; do
+   echo "variant $((k + 1)): ${VARIANTS[k]:-(MPI defaults, hcoll on)}"
+done
+printf '%-6s %-7s %-14s %6s %5s %5s %6s %7s %6s %5s %10s\n' \
+   repeat variant exit wall read 'H(x)' assim nobs ms/ob rest identical
+for i in $(seq 1 ${REPEATS}); do
+   d=${G}/rep${i}
+   phases=$(${PY} - ${d}/filter.log <<'EOF'
+import sys
+sys.path.insert(0, '/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da')
+from summarize_cycle_timing import filter_phases
+p = filter_phases(sys.argv[1])
+ms = f'{1000 * p["assim"] / p["nobs"]:.2f}' if p['nobs'] else '-'
+print(f'{p["read"]:5.0f} {p["hx"]:5.0f} {p["assim"]:6.1f} {p["nobs"] or "-":>7} {ms:>6} {p["rest"]:5.0f}')
+EOF
+)
+   printf '%-6s %-7s %-14s %6s %s %10s\n' ${i} $(cut -d' ' -f1 ${d}/variant.txt) "$(cat ${d}/exit.txt)" \
+      $(cat ${d}/wall_s.txt) "${phases}" "$(grep -c ': identical' ${d}/compare.txt)/${NMEM}"
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%12,Elapsed,NNodes,NTasks,MaxRSS,State

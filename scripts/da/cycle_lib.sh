@@ -46,20 +46,20 @@ recently_changed() {
 
 # run_filter <dir> <srun options...>: filter (DART_WORK/filter) as one srun step in <dir>, output in
 # <dir>/filter.log; returns 0 if filter finished ("Finished ... at" in filter.log), 1 otherwise.
-# Exit guard: on 2026-10-20 (slurm.filter_scaling, jobs 1054410 and 1054411) filter printed "Finished",
-# had written every output, and then all ranks kept spinning at 100 % CPU without exiting (in DART's
-# final barrier or MPI_Finalize). It happened in every run that included 512-GB nodes and in none
-# without (those nodes are now excluded in slurm.cycle; cause not established, obs_expansion.md
-# Sec. 9). Once "Finished" is in the log, the step gets FILTER_EXIT_GRACE s (default 30; a normal exit
-# takes a few s) to exit; if it hasn't, and no output file in <dir> or in output_list_d01.txt has
-# changed for 30 s, the step is cancelled (scancel; srun killed 60 s later if still there) and the
-# run counts as finished. Each firing is logged ("filter exit guard: ...") and leaves
-# <dir>/filter_exit_guard.txt.
+# hcoll off (OMPI_MCA_coll_hcoll_enable=0): with it, filter on 40 x 32 often hung after "Finished": one
+# node-leader rank never finished closing hcoll's UCX connections in MPI_Finalize (hcoll_context_free ->
+# hmca_bcol_ucx_p2p_disconnect) and all others waited in the last fence. hcoll off: no hang in 11 runs,
+# analyses bit-identical, step as fast (notes/filter_exit_hang.md, 2026-10-21).
+# Exit guard, kept as a safety net: once "Finished" is in the log, the step gets FILTER_EXIT_GRACE s
+# (default 30; a normal exit takes ~1 s) to exit; if it hasn't, and no output file in <dir> or in
+# output_list_d01.txt has changed for 30 s, the step is cancelled (scancel; srun killed 60 s later if
+# still there) and the run counts as finished. Each firing is logged ("filter exit guard: ...") and
+# leaves <dir>/filter_exit_guard.txt.
 run_filter() {
    local dir=$1; shift
    local grace=${FILTER_EXIT_GRACE:-30} pid rc t_fin= t_cancel= step busy
    rm -f "${dir}/filter_exit_guard.txt"
-   (cd "${dir}" && exec srun "$@" "${DART_WORK}/filter" > filter.log 2>&1) &
+   (cd "${dir}" && exec env OMPI_MCA_coll_hcoll_enable=0 srun "$@" "${DART_WORK}/filter" > filter.log 2>&1) &
    pid=$!
    while kill -0 "${pid}" 2> /dev/null; do
       if [ -z "${t_fin}" ]; then

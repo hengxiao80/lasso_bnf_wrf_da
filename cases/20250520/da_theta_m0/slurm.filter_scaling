@@ -36,8 +36,8 @@
 # its exit guard. Afterwards, per config: wall (includes the guard's wait if it fired), filter.log
 # phases (read / H(x) / assimilation / rest), obs, ms per ob, guard; the analyses against the
 # reference; sacct (Elapsed, MaxRSS per filter step, in config order).
-# The 512-GB nodes (cirrus57-64, 121-128) are excluded, as in slurm.cycle: with some of them in the job
-# (1054410, 1054411) filter hung at exit every time; without them (1054413) it exited normally.
+# Filter runs with hcoll off (run_filter): hcoll's teardown made it hang at exit (notes/filter_exit_hang.md);
+# the 512-GB nodes, excluded 2026-10-20 to 10-21 for that hang, are allowed again.
 #SBATCH --job-name=fscale520
 #SBATCH -A cli120
 #SBATCH --partition=batch_all
@@ -47,7 +47,6 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --output=slurm.filter_scaling.%j.out
 #SBATCH --exclusive
-#SBATCH --exclude=cirrus[57-64,121-128]
 
 source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0/config/experiment.sh
 source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # DART_EXTRA, file_time, run_filter
