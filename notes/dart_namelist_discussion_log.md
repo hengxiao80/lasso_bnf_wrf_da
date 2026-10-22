@@ -472,3 +472,22 @@ Summary note with tables and the test plan: `notes/mrms_two_pass_inflation.md` (
   (the conventional pass discards them, the MRMS pass doesn't inflate), so it isn't a clean test of the double
   inflation. Proposed clean test: an "inflate once" mode; alternative design: RTPS in both passes, as HRRRDAS.
 
+## Filter's order of operations; surface and radar forward operators (`&filter_nml :: compute_posterior`, `&model_nml :: sfc_elev_max_diff, allow_obs_below_vol`, `&obs_def_radar_mod_nml`) — 2026-10-22
+
+Reference note with the cycle diagram, the stage files and code line numbers: `notes/dart_workflow_walkthrough.md`.
+
+- **Order inside filter:** damp λ, inflate every state field (NO_COPY_BACK ones too), H(x) on the inflated ensemble,
+  outlier check, sequential observation loop, H(x) again on the analysis (`compute_posterior`), write back the UPDATE
+  fields only. `preassim_priorinf_*` is the damped λ actually applied; `postassim_priorinf_*` the adapted one carried
+  to the next cycle.
+- **Surface operators** (METAR, LAND_SFC): bilinear interpolation of T2, Q2 (then q = r/(1+r)), U10/V10 (turned to
+  earth-relative) and PSFC (altimeter, with the model terrain). No vertical interpolation, and the station elevation
+  is not used (`sfc_elev_max_diff = -1`); only `wrf_dart_obs_preprocess`'s 300-m elevation check screens them. Their
+  increments to the 3-D fields come only from ensemble correlations with these 2-D diagnostics.
+- **Posterior fits in `obs_seq.final` are optimistic:** T2, Q2, U10, V10, PSFC and REFL_10CM are updated in memory and
+  used for the posterior H(x), but none is written back; WRF rediagnoses them. Not quantified yet (note Sec. 7).
+- **MRMS:** the converter interpolates MRMS horizontally onto WRF's mass-point columns at the MRMS heights; DART
+  interpolates each member's REFL_10CM only vertically (`height_to_zk`) and floors it at −10 dBZ
+  (`apply_ref_limit_to_fwd_op`). An ob below a member's lowest mass level fails for that member
+  (`allow_obs_below_vol = .false.`).
+
