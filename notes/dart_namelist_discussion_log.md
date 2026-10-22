@@ -450,3 +450,25 @@ Numbers: `notes/obs_expansion.md` Sec. 9 (MRMS scaling test, job 1054799).
   table stays (the radar pass now treats MU, PH, W, PSFC as the one-pass run does), but run 4's larger shock comes from
   the two passes themselves, most likely the second inflation per cycle (`MRMS_INFLATION=both`).
 
+## Inflation and the impact table in the one- and two-pass MRMS setups (`&filter_nml :: inf_*`, `&assim_tools_nml :: adjust_obs_impact`) — 2026-10-22
+
+Summary note with tables and the test plan: `notes/mrms_two_pass_inflation.md` (from runs 3, 4, 4b and DART's code).
+
+- **Flavor 2:** one λ (and sd) per state element. Each pass damps it (λ ← 1 + 0.9 (λ − 1): 10 % of the excess),
+  inflates every state field (`UPDATE` or not), then updates the values and λ of every field the obs reach. Only
+  `UPDATE` fields are written to the members, but `postassim_priorinf_*` holds all fields' λ and is handed on
+  (`output_priorinf_*` holds only the `UPDATE` ones). λ can't change where the ensemble has no spread.
+- **Correction to the 2026-10-21 run 4 entry:** pass-2 damping does not "partly offset" inflating twice in any useful
+  sense; it removes 10 % of the excess, so the MRMS pass applies about the same λ again (U: mean 1.065 / max 3.50
+  against 1.062 / 3.77 in the conventional pass at 01:00). U is inflated ~×1.31 per cycle in run 4b against ×1.12 in
+  run 3.
+- **Impact table:** factor = (obs type being assimilated, quantity being updated); 0 skips the state element's
+  update **and its λ update**, and the update of later observations' priors of that quantity; it works by quantity
+  (U and U10 share one). It doesn't affect H(x), the damping or the inflation applied at the start of the pass.
+- **Remaining λ difference from run 3:** the conventional pass has no table, so the conventional obs adapt the
+  hydrometeor and REFL_10CM λ, which the MRMS pass then applies. Proposed: `obs_impact_conv.txt` (conventional rows of
+  `obs_impact_joint.txt`) in `input.nml.filter`.
+- **`MRMS_INFLATION=pass1`** removes the second inflation but also all inflation of QRAIN, QSNOW, QGRAUP and REFL_10CM
+  (the conventional pass discards them, the MRMS pass doesn't inflate), so it isn't a clean test of the double
+  inflation. Proposed clean test: an "inflate once" mode; alternative design: RTPS in both passes, as HRRRDAS.
+

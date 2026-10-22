@@ -784,3 +784,5 @@ guard, `driver: done`.
 - **Cost** as run 4 (cycle 673–742 s); the 742 s at 00:45 is member 005's `wrf.exe` integrating slowly (180 steps in
   131 s against 73 s for member 001; no hang, no guard), as in run 1's split node set. Disk: `output_madis_mrms2p_imp/`
   474 GB, `run_madis_mrms2p_imp/` 77 GB.
+- **Mechanics and next tests (2026-10-22):** how the inflation and the impact tables act in the one- and two-pass
+  setups, measured spread by stage, and a proposed test plan: `notes/mrms_two_pass_inflation.md`.
