@@ -517,3 +517,16 @@ while 2 runs, approving each step).
 - **Result (2026-10-23, job 1056509):** as expected. The no-table replay reproduces run 4b's first pass bit for bit;
   with the table the member files and `obs_seq.final` are bit-identical, and λ differs only in QRAIN, QSNOW, QGRAUP,
   REFL_10CM (7–16 % of the points). In use from the next run on. Details: `mrms_two_pass_inflation.md` Sec. 8 item 1.
+
+## One pass for MRMS from run 5 on; two-pass tests stopped (`MRMS_FILTER`) — 2026-10-23
+
+- **Decision (user):** `MRMS_FILTER=one_pass` (`input.nml.filter_joint`, `obs_impact_joint.txt`) is the working
+  configuration; the two-pass path (`input.nml.filter_mrms`, `MRMS_INFLATION`, `MRMS_PASS2_DAMPING`) stays in the code,
+  unused. Steps 2 (`pass1`) and 3 ("inflate once") of the test plan dropped.
+- **Why:** DART does in one pass what HRRRDAS separates (per-type cutoffs, the impact table, background radar priors);
+  after the conventional-pass table the two setups differ only in the second inflation and the order of the obs; no
+  advantage found for two passes, and they cost more (time, disk, settings). HRRRDAS's own reason for its two passes
+  is not stated in Dowell 2020 or Dowell et al. 2022 (plausibly: radar step on the 3-km domain only; GSI's EnKF sets
+  analysis variables and localization per execution). Full reasoning: `mrms_two_pass_inflation.md` Sec. 9.
+- **Inflation next:** run 5 with flavor 2 against flavor 5 (`INF_FLAVOR`, with `INF_SD_LOWER_BOUND` < 0.6 for a real
+  flavor-5 test, entry of 2026-10-15); RTPS (posterior `inf_flavor` 4) later, before the larger ensemble.

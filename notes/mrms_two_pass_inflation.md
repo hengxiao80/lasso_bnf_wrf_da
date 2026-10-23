@@ -3,8 +3,9 @@
 Written 2026-10-22 (session "Adding more obs part 8") from runs 3, 4 and 4b (`obs_expansion.md` Sec. 9) and a walk
 through DART's code (v11.25.3, `7bbd35a09`). How DART's adaptive prior inflation and the observation impact table
 behave in our one- and two-pass MRMS setups, what still differs between the two, and a plan for further two-pass
-tests (Sec. 8, proposed, not decided). Design of the two setups: `obs_expansion.md` Sec. 8.4 (two passes) and 8.5
-(one pass); namelist decisions: `dart_namelist_discussion_log.md`.
+tests (Sec. 8). Design of the two setups: `obs_expansion.md` Sec. 8.4 (two passes) and 8.5 (one pass); namelist
+decisions: `dart_namelist_discussion_log.md`. **Decided 2026-10-23 (Sec. 9): one pass from run 5 on; the two-pass
+tests stopped after steps 0 and 1.**
 
 ## 1. The runs
 
@@ -228,7 +229,7 @@ precipitation ob in the column or next to it (the obs are thinned to every other
 4. **`pass1` is not a clean test of conclusion 2.** Besides the second inflation it removes all inflation of the
    precipitation hydrometeors and REFL_10CM, and any radar adaptation of λ.
 
-## 8. Plan for further two-pass tests (proposed 2026-10-22, not decided)
+## 8. Plan for further two-pass tests (proposed 2026-10-22; steps 0, 1 done, 2, 3 dropped 2026-10-23: Sec. 9)
 
 Each run changes one thing against a reference, 1 hour (00:00–01:00, `obs_madis_mrms/`) unless noted. Cost per
 two-pass run: ~50 min on 40 nodes, ~550 GB (`output*/` 474 GB, `run*/` 77 GB). Runs 1–4b use ~2.2 TB: decide what
@@ -298,3 +299,31 @@ to trim first.
 
 Run 3 (one pass) stays the reference and a candidate. So far two passes fit the radar slightly better but shock the
 model more.
+
+## 9. Decision: one pass (user, 2026-10-23)
+
+**Stop the two-pass tests after steps 0 and 1; `MRMS_FILTER=one_pass` (run 3's setup) is the working configuration
+for run 5 and after.** The two-pass code stays in place, unused. Discussed in session "Adding more obs part 9":
+
+- **HRRRDAS gives no reason for its two passes.** Dowell (2020) and Dowell et al. (2022, Table 5) describe the two
+  EnKF steps (variables, localization 300 km / 18 km, RTPS after each) but not why they are separate. Two plausible
+  reasons: the radar step runs on the 3-km domain only, the conventional one on the 15-km domain too (documented); and
+  in GSI's EnKF as HRRRDAS configures it, the analysis variables (`anavinfo`) and the localization length are set per
+  execution, one namelist and one `anavinfo` per pass (our inference). HRRRDAS's GSI observer computes the radar H(x)
+  once, from the background, before both steps, so its second pass doesn't re-evaluate the operator on the
+  conventional analysis either.
+- **DART does in one pass what HRRRDAS separates:** per-type cutoffs (`special_localization_*`), what each family
+  updates (the impact table), background radar priors (conventional → `QTY_RADAR_REFLECTIVITY` = 0). After step 1
+  the two-pass setup differs from run 3 only by the second inflation of U, V, THM, QVAPOR, QCLOUD under `both` (or no
+  hydrometeor inflation under `pass1`) and by the order of the observations.
+- **No advantage found for two passes.** The only one would be settings per family (inflation or RTPS, QC), not
+  needed now; per-family adaptive inflation is what gave the larger shock. The better radar fit of 4b came with more
+  spread. Costs: cycles ~670–740 s against ~620–680 s (Sec. 9 of `obs_expansion.md`), ~550 GB against ~410 GB per
+  hour, more settings (`MRMS_INFLATION`, `MRMS_PASS2_DAMPING`, the inflation hand-over).
+- **What carries over from the plan:** step 0's diagnostics (in every `check_cycle.log`); step 1's table stays in
+  `input.nml.filter` (the first pass of conventional-only runs; one-pass MRMS runs use `input.nml.filter_joint` and
+  `obs_impact_joint.txt`); steps 4 (RTPS), 5 (damping, flavor 5) and 6 (longer runs) now in one pass. Steps 2
+  (`pass1`) and 3 ("inflate once") dropped.
+- **Next (user, 2026-10-23):** run 5 (everything) in one pass, with flavor 2 against flavor 5; RTPS later; then run 5
+  again with a larger ensemble, once the inflation is settled.
+

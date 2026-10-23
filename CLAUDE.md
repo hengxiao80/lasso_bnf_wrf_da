@@ -52,10 +52,10 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   an observation set (`obs_madis_mrms/`, `obs_meso_a_calmkeep_mrms/`), and a run on such a set runs filter twice per
   cycle (`config/input.nml.filter`, then `config/input.nml.filter_mrms`, which has the impact table
   `config/obs_impact_mrms.txt` since 2026-10-21: radar obs don't touch MU, PH, W, PSFC or their inflation), then
-  `wrfrst_dart.py qnrain`. `MRMS_INFLATION` (pass1 | both) has no default: undecided. Alternative per run,
-  `MRMS_FILTER=one_pass` (no default either): one filter
-  on `<t>/obs_seq.joint` with `config/input.nml.filter_joint` and the impact table `config/obs_impact_joint.txt`.
-  Design and open items: `notes/obs_expansion.md` Sec. 8.4–8.5.
+  `wrfrst_dart.py qnrain`. Alternative per run, `MRMS_FILTER=one_pass` (no default; `driver.sh` requires one of the
+  two): one filter on `<t>/obs_seq.joint` with `config/input.nml.filter_joint` and the impact table
+  `config/obs_impact_joint.txt`. **Decided (user, 2026-10-23): one pass from run 5 on**; the two-pass path stays in the
+  code, unused (reasons: `notes/mrms_two_pass_inflation.md` Sec. 9). Design: `notes/obs_expansion.md` Sec. 8.4–8.5.
   **WRF is patched** so `REFL_10CM` is in `wrfrst` (`patches/wrf_06d4240a_refl_10cm_restart.patch`, rebuilt and tested
   2026-10-14; old executables kept as `main/*.exe.pre_refl_restart`). Restart files written before then lack `REFL_10CM`.
 - **Filter layout and run plan** (2026-10-20, `notes/obs_expansion.md` Sec. 9): filter runs on 40 nodes × 32 ranks
@@ -66,8 +66,11 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   `_madis_mrms1p`, `_madis_mrms2p`, plus 4b `_madis_mrms2p_imp` = run 4 with the MRMS impact table); MRMS scaling test
   done (radar pass ~0.2 ms/ob, ~1 min of filter; `&location_nml` 283 × 144 in the two MRMS namelists).
   `outlier_threshold = 3` for all types. Two passes with `MRMS_INFLATION=both` (and `MRMS_PASS2_DAMPING=1`) give a
-  ~50 % larger post-analysis shock than one pass from 00:45 on, not caused by the MU inflation (run 4b); next test
-  proposed: `MRMS_INFLATION=pass1`.
+  ~50 % larger post-analysis shock than one pass from 00:45 on, and from 00:45 on their analysis ends with more
+  spread than its forecast (double inflation of U V THM QVAPOR QCLOUD). Since 2026-10-23: `check_cycle.py` prints the
+  spread by stage per pass (all points and echo columns); `input.nml.filter` has the impact table
+  `config/obs_impact_conv.txt` (conventional obs don't touch QRAIN QSNOW QGRAUP REFL_10CM or their inflation).
+  **Next: run 5 (everything) in one pass, inflation flavor 2 against 5; RTPS later; then a larger ensemble.**
 - `model_mod_check`: interpolation test only (`test1thru = 0`) run 2026-09-22 in `cases/20250520/dart/mmc/`
   ("Finished successfully"; its `input.nml` is the ancestor of `input.nml.filter`); the fuller tests
   (`test1thru` > 0) deferred by the user.

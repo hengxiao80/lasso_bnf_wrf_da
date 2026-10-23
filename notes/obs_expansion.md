@@ -402,7 +402,7 @@ A second way to take MRMS, chosen per run: **`MRMS_FILTER=one_pass`** (vs `two_p
 | 2 | MADIS + mesonet (a), calm winds kept | `_meso_a_calmkeep` | one pass | `_meso_a` | nothing (set built) |
 | 3 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=one_pass` | `_madis_mrms1p` | nothing (set built) |
 | 4 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=two_pass` | `_madis_mrms2p` | `MRMS_INFLATION=both`, `MRMS_PASS2_DAMPING=1` (decided 10-21) |
-| 5 | everything | to decide | to decide | to decide | decided after 1–4 |
+| 5 | everything | `_meso_a_calmkeep_mrms` | `MRMS_FILTER=one_pass` (decided 10-23) | to decide | nothing (set built); flavor 2 vs 5 |
 
 Run 2: the user first asked for calm winds dropped, then (2026-10-15) kept them ("does not matter really"), so it
 uses the built `obs_meso_a_calmkeep/` (Sec. 7). Run 1 is also the first test of the new
@@ -786,3 +786,7 @@ guard, `driver: done`.
   474 GB, `run_madis_mrms2p_imp/` 77 GB.
 - **Mechanics and next tests (2026-10-22):** how the inflation and the impact tables act in the one- and two-pass
   setups, measured spread by stage, and a proposed test plan: `notes/mrms_two_pass_inflation.md`.
+- **Decision (user, 2026-10-23): one pass from run 5 on.** Two-pass tests stopped after the spread diagnostics and
+  the conventional-pass impact table (`mrms_two_pass_inflation.md` Sec. 8–9): no advantage found for two passes in
+  DART, which does per family in one pass what HRRRDAS separates; HRRRDAS's reason for its two passes isn't stated
+  in Dowell 2020 or Dowell et al. 2022. Run 5 in one pass, testing inflation flavor 2 against 5; RTPS later.
