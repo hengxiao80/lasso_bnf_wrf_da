@@ -30,8 +30,10 @@ QC_NAMES = {0: "assim", 1: "eval", 2: "post-fail", 3: "eval-post-fail", 4: "prio
 STATE = ["U", "V", "W", "PH", "THM", "MU", "QVAPOR", "PSFC", "T2", "Q2", "U10", "V10"]
 
 
-def read_obs_seq(path):
-    """ASCII obs_seq: returns copy names, QC names, type names by number, and per-obs records."""
+def read_obs_seq(path, locations=False):
+    """ASCII obs_seq: returns copy names, QC names, type names by number, and per-obs records
+    (kind, values, QCs, error variance), with locations=True also (lon, lat, vertical) as written
+    (radians for lon and lat)."""
     with open(path) as f:
         tok = f.read().split("\n")
     i = 0
@@ -53,12 +55,12 @@ def read_obs_seq(path):
         qc = [float(tok[i + k]) for k in range(nqc)]; i += nqc
         i += 1  # links
         assert tok[i].strip() == "obdef"; i += 2  # obdef, loc3d
-        i += 1  # location
+        loc = tok[i]; i += 1
         assert tok[i].strip() == "kind"; i += 1
         kind = int(tok[i]); i += 1
         i += 1  # time
         var = float(tok[i]); i += 1
-        recs.append((kind, vals, qc, var))
+        recs.append((kind, vals, qc, var) + ((tuple(float(x) for x in loc.split()[:3]),) if locations else ()))
     return copies, qcs, types, recs
 
 

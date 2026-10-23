@@ -57,6 +57,9 @@ setup_test() {   # <dir>: members, links, input.nml, file lists, inflation files
    mkdir -p ${d}
    cp -r ${G}/members/mem* ${d}/
    sed "s/tasks_per_node = 16/tasks_per_node = ${NRANK}/" ${CONFIG_DIR}/input.nml.filter > ${d}/input.nml
+   if grep -q "^ *adjust_obs_impact *= *\.true\." ${d}/input.nml; then   # impact table, as prep_filter.sh (since 2026-10-23)
+      cp ${CONFIG_DIR}/$(sed -n "s/^ *obs_impact_filename *= *'\([^']*\)'.*/\1/p" ${d}/input.nml) ${d}/
+   fi
    ln -sf ${GRID_FILE} ${d}/wrfinput_d01
    ln -sf ${SEC_TABLE} ${d}/sampling_error_correction_table.nc
    : > ${d}/input_list_d01.txt

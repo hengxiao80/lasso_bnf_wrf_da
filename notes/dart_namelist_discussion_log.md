@@ -491,3 +491,29 @@ Reference note with the cycle diagram, the stage files and code line numbers: `n
   (`apply_ref_limit_to_fwd_op`). An ob below a member's lowest mass level fails for that member
   (`allow_obs_below_vol = .false.`).
 
+
+## Impact table in the conventional pass (`&assim_tools_nml :: adjust_obs_impact, obs_impact_filename` in `input.nml.filter`) — 2026-10-23
+
+Step 1 of the test plan in `notes/mrms_two_pass_inflation.md` Sec. 8 (the user chose the order 0 → 1 → 2, with 3 coded
+while 2 runs, approving each step).
+
+- **What:** `config/obs_impact_conv.txt` = the non-radar rows of `obs_impact_joint.txt` (88 lines: each of the 22
+  assimilated types of `&obs_kind_nml` → QTY_RAINWATER, QTY_SNOW, QTY_GRAUPEL_MIXING_RATIO, QTY_RADAR_REFLECTIVITY:
+  0), named in `input.nml.filter`, so it applies to the first pass of every run, conventional-only runs included;
+  `prep_filter.sh` copies the table the namelist names (as for the MRMS pass); `slurm.filter_gate` now does too.
+- **Why:** in the two-pass runs the conventional obs adapt the λ of QRAIN, QSNOW, QGRAUP and REFL_10CM (2/3 of the
+  changes up, +0.03 to +0.07 at the changed points), which the MRMS pass applies under `MRMS_INFLATION = both`; in the
+  one-pass run the joint table prevents it. After this, the two-pass setup differs from run 3 only in the second
+  inflation and the order of the observations.
+- **Expected effect:** none on the fields written back (U V PH THM MU QVAPOR QCLOUD: the table rows are for quantities
+  that are NO_COPY_BACK in this pass), nor on `obs_seq.final` (no conventional ob is of those quantities). Only the λ,
+  the discarded analyses and the sd of those 4 fields change. In a conventional-only run nothing reaches WRF either way.
+- **Groups:** not possible. Filter's reader (`read_impact_table`, `obs_impact_mod.f90`) takes only plain
+  `type quantity factor` lines (exactly 3 words per line, so no comment lines either); DART's group syntax is
+  expanded by the separate `obs_impact_tool` program. A type added to `&obs_kind_nml` needs its 4 rows in the table;
+  a missing row would let that type adapt the hydrometeor λ again, without any error.
+- **Check:** replay `slurm.conv_impact_test` (run 4b's first pass at 01:00, without and with the table; also checks
+  that the no-table replay reproduces run 4b's pass).
+- **Result (2026-10-23, job 1056509):** as expected. The no-table replay reproduces run 4b's first pass bit for bit;
+  with the table the member files and `obs_seq.final` are bit-identical, and λ differs only in QRAIN, QSNOW, QGRAUP,
+  REFL_10CM (7–16 % of the points). In use from the next run on. Details: `mrms_two_pass_inflation.md` Sec. 8 item 1.

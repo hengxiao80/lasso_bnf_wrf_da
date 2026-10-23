@@ -95,7 +95,8 @@ radar-driven MU inflation of run 4 but not the larger shock.
     - each assimilated conventional type → `QTY_RADAR_REFLECTIVITY` = 0: REFL_10CM is not updated, and neither are
       the radar obs priors, which keep the background H(x), as in the MRMS pass of a two-pass run.
   - `obs_impact_mrms.txt` (since 2026-10-21, run 4b on): the 8 radar rows, in the MRMS pass.
-  - The conventional pass of the two-pass runs has **no table**.
+  - The conventional pass of the two-pass runs had **no table** up to run 4b; since 2026-10-23 it has
+    `obs_impact_conv.txt` (`input.nml.filter`, so every run's first pass): the conventional rows of the joint table.
 
 ## 4. Flags per pass, λ adaptation, and what reaches WRF (run 4b)
 
@@ -183,6 +184,37 @@ At 00:45: U run 3 1.10 → 1.18 → 1.07; 4b 1.14 → 1.23 → 1.18, then 1.18 �
   changed points (2/3 up; extremes +1.44 / −1.08), against +0.18 to +0.20 from the radar obs; QSNOW, QGRAUP +0.02 to
   +0.04 against +0.11 to +0.16 (00:30–01:00).
 
+**Routine since 2026-10-22 (plan step 0).** `check_cycle.py` prints these numbers in a "spread by stage" section of
+every `check_cycle.log`, for each pass: U V THM QVAPOR QCLOUD QRAIN QSNOW QGRAUP MU, sd before inflation
+(`input_sd`), after (`preassim_sd`) and after assimilation (`postassim_sd`), and the applied λ
+(`preassim_priorinf_mean`: mean, share > 1.1, max; `*` marks fields the pass doesn't write back), over all points and
+over the echo columns. It ends with forecast → analysis over the cycle (first pass `input_sd` → `postassim_sd` of the
+last pass that writes the field). Echo columns: the background mean REFL_10CM ≥ 10 dBZ at some level, or an MRMS
+precipitation ob in the column or next to it (the obs are thinned to every other point). At 01:00 that is 21 % and
+32 % of the columns, 34.5 % together. Runs 3, 4 and 4b are backfilled with `--spread-only` into
+`output<RUN_NAME>/<t>/spread_by_stage.log`; the U numbers above are reproduced exactly.
+
+**Forecast → analysis spread over the cycle** (domain RMS of the sd; ratio analysis / forecast):
+
+| cycle | U all, run 3 | U all, 4b | U echo, run 3 | U echo, 4b | THM echo 3 / 4b | QVAPOR echo 3 / 4b | QRAIN echo 3 / 4b |
+|---|---|---|---|---|---|---|---|
+| 00:15 | 0.830 → 0.749 (×0.90) | 0.830 → 0.758 (×0.91) | 0.989 → 0.890 (×0.90) | 0.989 → 0.906 (×0.92) | ×0.96 / ×0.96 | ×0.89 / ×0.90 | ×0.84 / ×0.87 |
+| 00:30 | 0.974 → 0.911 (×0.94) | 0.983 → 0.949 (×0.97) | 1.29 → 1.21 (×0.94) | 1.31 → 1.28 (×0.98) | ×0.97 / ×0.99 | ×0.91 / ×0.97 | ×0.91 / ×0.94 |
+| 00:45 | 1.10 → 1.07 (×0.97) | 1.14 → 1.19 (×1.04) | 1.52 → 1.49 (×0.98) | 1.60 → 1.72 (×1.08) | ×0.99 / ×1.02 | ×0.97 / ×1.09 | ×0.96 / ×0.99 |
+| 01:00 | 1.21 → 1.16 (×0.96) | 1.33 → 1.39 (×1.05) | 1.70 → 1.64 (×0.97) | 1.92 → 2.06 (×1.08) | ×0.99 / ×1.01 | ×0.90 / ×1.02 | ×0.93 / ×0.92 |
+
+- **From 00:45 on, the two-pass analysis ends with more U, V, THM and QVAPOR spread than its forecast**, most in the
+  echo columns (U ×1.08, QVAPOR ×1.09 at 00:45). Run 3 reduces the spread of every field in every cycle. Run 4's ratios
+  are within 0.01 of 4b's except for MU (its radar-adapted MU λ).
+- The forecast spread grows faster in 4b: U in the echo columns 1.52 / 1.70 m/s (run 3) against 1.60 / 1.92 (4b) at
+  00:45 / 01:00.
+- 00:45 has few surface obs (32 METAR altimeters, against 139–313 in the other cycles: the routine METARs fall into
+  the 01:00 window), so the conventional pass removes little spread there (MU ×0.97 in both runs, against ×0.68–0.73
+  in the other cycles). 4b turns to spread growth at that cycle.
+- The applied λ is about twice as far from 1 in the echo columns as over all points, in both setups (U at 01:00: mean
+  1.15–1.16 with 30–31 % of the points > 1.1, against 1.06–1.07 and 13–14 %).
+- QRAIN, inflated once in both setups, falls over every cycle in both, by similar factors.
+
 ## 7. Conclusions so far
 
 1. **The MU λ leak (run 4) is fixed** by `obs_impact_mrms.txt`; replay (job 1054969) and run 4b confirm it. It did
@@ -191,7 +223,8 @@ At 00:45: U run 3 1.10 → 1.18 → 1.07; 4b 1.14 → 1.23 → 1.18, then 1.18 �
    radar obs ~15–20 % more wind spread to act on, and leaves more analysis spread for the next cycle. It is not shown
    to be the cause.
 3. **Remaining difference in λ handling** between 4b and run 3: the conventional obs adapt the hydrometeor and
-   REFL_10CM λ (no table in the conventional pass). Small, and those fields are inflated only once anyway.
+   REFL_10CM λ (no table in the conventional pass). Small, and those fields are inflated only once anyway. Removed
+   from 2026-10-23 on by `obs_impact_conv.txt` (plan step 1).
 4. **`pass1` is not a clean test of conclusion 2.** Besides the second inflation it removes all inflation of the
    precipitation hydrometeors and REFL_10CM, and any radar adaptation of λ.
 
@@ -203,8 +236,8 @@ to trim first.
 
 | step | what | job | reference | question |
 |---|---|---|---|---|
-| 0 | spread-by-stage diagnostics in `check_cycle.py` | none | backfill 3, 4, 4b | make Sec. 6 routine |
-| 1 | impact table in the conventional pass + replay check | ~5 min | 4b | λ handling as in run 3 |
+| 0 | spread-by-stage diagnostics in `check_cycle.py` (done 2026-10-22) | none | backfill 3, 4, 4b | make Sec. 6 routine |
+| 1 | impact table in the conventional pass + replay check (done 2026-10-23) | ~5 min | 4b | λ handling as in run 3 |
 | 2 | `MRMS_INFLATION=pass1` | 1-hour run | 4b(c) | bound: no MRMS-pass inflation |
 | 3 | new mode "inflate once" | coding, replay, 1-hour run | run 3, 4b(c) | does the double inflation cause the shock? |
 | 4 | RTPS in both passes (HRRRDAS-like) | coding, 1-hour run | best of 2–3 | inflation design for the extension |
@@ -214,7 +247,8 @@ to trim first.
 0. **Diagnostics first (no job).** Add a block to `check_cycle.py` per pass: domain RMS of the sd of U, V, THM,
    QVAPOR, QCLOUD, QRAIN, QSNOW, QGRAUP before inflation, after inflation and after assimilation, and the applied λ
    (mean, share > 1.1, max). Also restricted to echo regions (model or MRMS reflectivity ≥ 10 dBZ), where the radar
-   increments and the shock are. Backfill runs 3, 4 and 4b.
+   increments and the shock are. Backfill runs 3, 4 and 4b. **Done 2026-10-22** (end of Sec. 6; the user chose the
+   order 0 → 1 → 2, with 3 coded while 2 runs, and approves each step).
 1. **Conventional-pass impact table.** `config/obs_impact_conv.txt` with the conventional rows of
    `obs_impact_joint.txt` (each conventional type → QRAIN, QSNOW, QGRAUP, `QTY_RADAR_REFLECTIVITY` = 0) in
    `input.nml.filter`. The rows must cover every assimilated conventional type, including `LAND_SFC_*` for the
@@ -224,6 +258,16 @@ to trim first.
    fields. Not a separate cycling run: it becomes part of every later two-pass run ("4c" = 4b with it, needed only
    if a clean reference is wanted). After it, the only differences from run 3 are the second inflation and the
    order of the observations.
+   **Done 2026-10-23.** Filter's reader takes no groups (plain `type quantity factor` lines only; groups are expanded
+   by the separate `obs_impact_tool`), so the table is the 88 non-radar rows of `obs_impact_joint.txt`, covering
+   exactly the 22 assimilated types of `input.nml.filter`. Replay `slurm.conv_impact_test` (job 1056509; run 4b's
+   first pass at 01:00, `tests/conv_impact/202505200100_1056509/`):
+   - the no-table replay reproduces run 4b's first pass bit for bit (postassim members, mean, λ mean and sd);
+   - with the table: member files and `obs_seq.final` bit-identical; filter read all 88 entries;
+   - λ (`postassim_priorinf_mean`) differs only in QRAIN (9 % of the points, max 1.08), QSNOW (15 %, 1.18), QGRAUP
+     (7 %, 1.23), REFL_10CM (16 %, 1.23); the λ sd, the applied λ and the prior mean are identical; the posterior
+     mean and sd differ only in those 4 fields (the discarded analyses: max QRAIN 4.8 g/kg, REFL_10CM 47 dBZ);
+   - filter 56 s against 64 s (same observation loop, 25 / 24 s).
 2. **`pass1`** (`RUN_NAME=_madis_mrms2p_p1`; no code). Expect a smaller shock, more radar outliers, smaller radar
    increments and hydrometeor spread decaying over the cycles. Read it as a bound, not as proof of conclusion 2.
 3. **"Inflate once"** (new `MRMS_INFLATION` value, name to decide). The MRMS pass applies λ only to the fields the

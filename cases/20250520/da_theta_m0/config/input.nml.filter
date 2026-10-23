@@ -110,6 +110,14 @@
 # 2 * cutoff * vert_normalization_scale_height = 2 * 0.0235 * 10.6 = 0.5.
 # Changing cutoff changes the vertical width too, unless the normalization is changed with it.
 # sampling_error_correction reads sampling_error_correction_table.nc from the run directory.
+# Impact table (since 2026-10-23, plan step 1 of mrms_two_pass_inflation.md; obs_impact_conv.txt, copied in
+# by prep_filter.sh): each assimilated type of &obs_kind_nml -> QTY_RAINWATER, QTY_SNOW,
+# QTY_GRAUPEL_MIXING_RATIO and QTY_RADAR_REFLECTIVITY: 0, the conventional rows of obs_impact_joint.txt.
+# These fields are NO_COPY_BACK here, so their increments never reached the members; the table also
+# keeps the conventional obs from adapting their inflation, which the MRMS pass of a two-pass run
+# applies (MRMS_INFLATION = both), as in the one-pass run. No effect on the fields written back.
+# The file takes plain "type quantity factor" lines only (no comments, no groups: filter's
+# read_impact_table); a type added to &obs_kind_nml needs its 4 rows there too.
 &assim_tools_nml
    cutoff                            = 0.0235,
    sort_obs_inc                      = .false.,
@@ -121,6 +129,9 @@
    convert_all_state_verticals_first = .true.
    convert_all_obs_verticals_first   = .true.
    print_every_nth_obs               = 500,
+   adjust_obs_impact                 = .true.,
+   obs_impact_filename               = 'obs_impact_conv.txt',
+   allow_any_impact_values           = .false.,
    /
 
 &cov_cutoff_nml

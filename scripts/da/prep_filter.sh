@@ -3,7 +3,8 @@
 #
 # Usage: prep_filter.sh <experiment.sh> <YYYYMMDDHHMM> [conv|mrms]
 #
-# conv (default): the first (or only) filter pass, in run/filter/, steps 1-3 below. In a one-pass MRMS
+# conv (default): the first (or only) filter pass, in run/filter/, steps 1-3 below, with the impact
+#    table config/obs_impact_conv.txt (since 2026-10-23; the one input.nml.filter names). In a one-pass MRMS
 #    run (MRMS_FILTER = one_pass, cycle_lib.sh one_pass_mrms) the only pass: input.nml from
 #    config/input.nml.filter_joint, obs_seq.out -> obs/<t>/obs_seq.joint, and the impact table
 #    config/obs_impact_joint.txt linked in as obs_impact_joint.txt.
