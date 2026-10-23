@@ -12,19 +12,30 @@ Code references: DART `7bbd35a09` (`../software/DART`; `filter_mod.f90`, `assim_
 `slurm.cycle` → `driver.sh` (loop over the cycles, resumable, one `settings.txt` per run) → `cycle_job.sh` per cycle:
 
 ```
-  wrf.exe, 5 members, true restart t-15 → t              (advance_member.sh, previous cycle)
-        │  run/memNNN/wrfrst_d01_<t>
-        ▼
-  extract   wrfrst (_2 time level) → run/memNNN/dart_d01.nc   (copy kept as output/<t>/memNNN/prior_d01.nc)
-        ▼
-  filter    reads dart_d01.nc, overwrites it with the analysis   (+ MRMS pass if MRMS_FILTER=two_pass)
-        ▼
-  [qnrain]  QNRAIN from the changed QRAIN (MRMS runs only)
-  insert    UPDATE fields → both time levels of wrfrst; PH = prior + hydrostatic increment (HYDROSTATIC_PH=1);
-            recompute AL, ALT, P, P_HYD, T = THM
-  re-extract → start_d01.nc → update_wrf_bc refits a fresh copy of bdy/wrfbdy_d01_memNNN
-        ▼
-  wrf.exe   true restart t → t+15, writes wrfout and wrfrst at t+15     → check_cycle.py → status = complete
+ t-15 -> t    wrf.exe, 5 members, true restart (previous cycle)
+      |       writes run/memNNN/wrfrst_d01_<t>
+      v
+ extract      wrfrst (_2 time level) -> run/memNNN/dart_d01.nc
+              (copy kept as output/<t>/memNNN/prior_d01.nc)
+      |
+      v
+ filter       reads dart_d01.nc, overwrites it with the analysis
+              (+ an MRMS pass if MRMS_FILTER=two_pass)
+      |
+      v
+ [qnrain]     QNRAIN from the changed QRAIN (MRMS runs only)
+ insert       UPDATE fields -> both time levels of wrfrst;
+              PH = prior + hydrostatic increment (HYDROSTATIC_PH=1);
+              recompute AL, ALT, P, P_HYD, T = THM
+ re-extract   wrfrst -> run/memNNN/start_d01.nc
+ refit        update_wrf_bc refits a fresh copy of
+              bdy/wrfbdy_d01_memNNN to start_d01.nc
+      |
+      v
+ t -> t+15    wrf.exe, true restart; writes wrfout and wrfrst at t+15
+      |
+      v
+ check        check_cycle.py -> status = complete
 ```
 
 | stage | script | marker in `output<RUN_NAME>/<t>/` |
@@ -113,7 +124,7 @@ takes its surface branch (`model_mod.f90:1242`, `surf_var`):
 | METAR / LAND_SFC temperature | bilinear interpolation of **T2** from the 4 surrounding mass points | `model_mod.f90:1770` |
 | METAR / LAND_SFC humidity | bilinear interpolation of **Q2** (a mixing ratio r), then q = r/(1+r) | `model_mod.f90:2010–2037` |
 | METAR / LAND_SFC wind | **U10** and **V10** both interpolated, then turned from grid-relative to earth-relative (`gridwind_to_truewind`) | `model_mod.f90:1589–1626` |
-| METAR altimeter | **PSFC** interpolated, plus the model terrain (HGT, from filter's `wrfinput_d01`); altimeter = ((p − 0.3)^0.190284 + 8.4228807e-5·h)^(1/0.190284), p in hPa, h in m | `obs_def_altimeter_mod.f90:104–115, 128` |
+| METAR altimeter | **PSFC** interpolated, plus the model terrain (HGT, from filter's `wrfinput_d01`); altimeter = `((p - 0.3)^0.190284 + 8.4228807e-5*h)^(1/0.190284)`, p in hPa, h in m | `obs_def_altimeter_mod.f90:104–115, 128` |
 | MRMS reflectivity (VERTISHEIGHT) | **REFL_10CM** interpolated in 3-D (horizontally, then in height), floored at −10 dBZ | `obs_def_radar_mod.f90:1125–1131` (`microphysics_type = 5`); Sec. 6 |
 
 For comparison, ACARS and radiosonde temperatures go through the 3-D path: vertical interpolation in the column, and
@@ -151,13 +162,22 @@ converter maps MRMS onto WRF's mass-point columns, and DART then interpolates RE
 heights.
 
 ```
-  MRMS MergedReflectivityQC, 0.01° lat-lon (~1 km), 33 levels 0.5-19 km MSL
-        │  mrms_to_obs_seq.py: bilinear in dBZ, horizontal only
-        ▼
-  reflectivity on WRF mass-point columns (549 × 389) at the MRMS heights → thinning → obs_seq.mrms
-        ▲
-        │  DART, per member: that column (horizontal weights ≈ 1, 0, 0, 0), then linear in height
-  WRF REFL_10CM
+ MRMS MergedReflectivityQC: 0.01 deg lat-lon (~1 km),
+ 33 levels, 0.5-19 km MSL
+      |
+      |  mrms_to_obs_seq.py: bilinear in dBZ, horizontal only
+      v
+ reflectivity on WRF mass-point columns (549 x 389),
+ at the MRMS heights
+      |
+      |  thinning, boundary trim
+      v
+ obs_seq.mrms   (each ob: a mass point's lat/lon + an MRMS height)
+      ^
+      |  DART, per member: that column (horizontal weights
+      |  about 1, 0, 0, 0), then linear in height
+      |
+ WRF REFL_10CM
 ```
 
 1. **Converter** (`scripts/da/mrms_to_obs_seq.py`), a port of HRRR's `process_NSSL_mosaic_to_dart_and_netcdf.f90`
