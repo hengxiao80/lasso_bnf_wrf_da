@@ -140,12 +140,19 @@ def handoff_rows(notes, sessions):
     return rows
 
 
-def main():
+def load_groups():
     with open(GROUPS, 'rb') as f:
-        groups = tomllib.load(f)['group']
+        return tomllib.load(f)['group']
+
+
+def load_sessions():
     sessions = [read_session(p) for p in glob.glob(os.path.join(PROJECT_DIR, '*.jsonl'))]
     sessions.sort(key=lambda s: s['t0'])
-    notes = read_handoffs()
+    return sessions
+
+
+def classify(sessions, groups):
+    """Sessions with prompts by group key (None: ungrouped), sessions without, and the claiming entries."""
     empty = [s for s in sessions if s['prompts'] == 0]
     by_group, used = {}, set()
     for s in sessions:
@@ -153,7 +160,15 @@ def main():
             key, entry = assign(s, groups)
             by_group.setdefault(key, []).append(s)
             used.add(entry)
-    unused = [f"{g['key']}: {e!r}" for g in groups for e in g.get('ids', []) + g.get('names', [])
+    return by_group, empty, used
+
+
+def main():
+    groups = load_groups()
+    sessions = load_sessions()
+    notes = read_handoffs()
+    by_group, empty, used = classify(sessions, groups)
+    unused =[f"{g['key']}: {e!r}" for g in groups for e in g.get('ids', []) + g.get('names', [])
               if (g['key'], e) not in used]
 
     now = datetime.datetime.now().astimezone()

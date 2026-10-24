@@ -44,4 +44,6 @@ names = ["statusline", "Context window", "skill for Claude", "Session name",
 [[group]]
 key = "junk"
 title = "Redundant or stray"
-ids = ["05106cb2", "6b39cf27"]   # "Attach 0a11ca2b" (a resume attempt), "/resu,e" (a typo)
+# Stray sessions go here by ID, then: uv run scripts/session_delete.py --group junk
+# (05106cb2 "Attach 0a11ca2b" and 6b39cf27 "/resu,e" deleted 2026-10-24.)
+ids = []
