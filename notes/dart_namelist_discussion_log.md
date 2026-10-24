@@ -530,3 +530,14 @@ while 2 runs, approving each step).
   analysis variables and localization per execution). Full reasoning: `mrms_two_pass_inflation.md` Sec. 9.
 - **Inflation next:** run 5 with flavor 2 against flavor 5 (`INF_FLAVOR`, with `INF_SD_LOWER_BOUND` < 0.6 for a real
   flavor-5 test, entry of 2026-10-15); RTPS (posterior `inf_flavor` 4) later, before the larger ensemble.
+
+## Adaptive prior inflation, flavors 2 and 5: math and code (`&filter_nml :: inf_*`) — 2026-10-23
+
+Walk-through note with the derivations: `notes/dart_adaptive_inflation.md` (DART code; Anderson 2009 and El Gharamti 2018, both in `notes/`; checks with DART's routines compiled stand-alone). Points that bear on run 5:
+
+- **The flavors differ only in the Bayesian update of one (λ, sd) pair by one observation.** Damping, inflating, γ = localization × impact × |correlation| (taken before the sampling-error correction) and the bounds are the same. Flavor 5's mode equation is flavor 2's with σ_λ² replaced by λ²/(α+1). At λ = 1, sd 0.6 that is 0.126 instead of 0.36, so each observation moves flavor-5 λ ~0.35–0.45 times as far. That fits step 13's `_hph_f5` (about half the inflation). Its likelihood's −1/N term raises the target by 1/N = 0.2 with 5 members.
+- **The expectation in the run-5 settings entry of 2026-10-23 ("the sd falls to the floor where obs are dense") needs a qualifier.** In flavor 5 the sd falls where the innovations become consistent with λ, but grows (up to 5 % per accepted update, no upper bound) where they stay larger than λ predicts.
+- **Two code findings, both reproduced with DART's own routines:**
+  - For a steep likelihood (ℓ/ℓ′ < 2λ̄/(α+1)) flavor 5 takes the wrong root and lowers λ. This happens with sd ≈ 0.6 and a radar innovation near the 3-sd outlier limit where the reflectivity spread is ≳ 10 dBZ.
+  - With our `r8 = r4` build, β^α overflows and flavor 5's sd freezes where sd/λ ≲ 0.22 (sd 0.3 at λ ≳ 1.35).
+- **Damping in the code acts on λ**, not on √λ as in G18 and the guide's "order of operations" note.
