@@ -70,7 +70,14 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   spread than its forecast (double inflation of U V THM QVAPOR QCLOUD). Since 2026-10-23: `check_cycle.py` prints the
   spread by stage per pass (all points and echo columns); `input.nml.filter` has the impact table
   `config/obs_impact_conv.txt` (conventional obs don't touch QRAIN QSNOW QGRAUP REFL_10CM or their inflation).
-  **Next: run 5 (everything) in one pass, inflation flavor 2 against 5; RTPS later; then a larger ensemble.**
+  **Run 5 (everything, one pass) passed 2026-10-23 in two variants:** `_conv_refl_f2` (flavor 2, sd 0.6) and
+  `_conv_refl_f5` (`INF_FLAVOR=5 INF_SD_LOWER_BOUND=0.3`; `inf_lower_bound` stays 1.0, deflation maybe later).
+  `RUN_NAME`s from run 5 on name observation families (`conv` = MADIS + mesonet, `refl` = MRMS) and the flavor.
+  Mesonet with MRMS (against run 3): moist 2-m bias gone, less spread; the post-analysis shock comes with MRMS.
+  Flavor 5: fits nearly as flavor 2, less inflation on average, but its sd grows at 16–17 % of the points and λ
+  reaches the cap of 5 at ~10× more points each cycle (0.05 % at 01:00). Results: `notes/obs_expansion.md` Sec. 9,
+  run 5; theory: `notes/dart_adaptive_inflation.md`. **Next (user to decide): which flavor to keep (flavor 2
+  proposed); RTPS, or a longer flavor-5 run; then a larger ensemble.**
 - `model_mod_check`: interpolation test only (`test1thru = 0`) run 2026-09-22 in `cases/20250520/dart/mmc/`
   ("Finished successfully"; its `input.nml` is the ancestor of `input.nml.filter`); the fuller tests
   (`test1thru` > 0) deferred by the user.
