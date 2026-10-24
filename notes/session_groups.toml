@@ -1,0 +1,47 @@
+# Groups for the session index (scripts/session_index.py writes notes/sessions.md).
+#
+# A session goes to the first of these that claims it:
+#   1. a group whose `ids` holds the first 8 characters of its session ID;
+#   2. a group whose key starts its name ("obs: part 11" goes to `obs`);
+#   3. the first group, in file order, with a `names` entry found in the name you
+#      gave it or in Claude Code's own title (case, spaces and punctuation ignored).
+# `names` entries are search patterns, not a list of sessions: "Adding more obs"
+# catches all ten parts. The script names any entry that claims no session.
+# Sessions nobody claims are listed under "Ungrouped"; sessions without a single
+# prompt are only counted. Groups appear in the index in this order.
+
+[[group]]
+key = "obs"
+title = "Observation expansion and 1-hour runs"
+names = ["Adding more obs"]
+
+[[group]]
+key = "pilot"
+title = "5-member DA pilot"
+names = ["5-member pilot", "IC and LBC perturbation"]
+
+[[group]]
+key = "dart"
+title = "Learning WRF-DART"
+names = ["learn WRF-DART", "WRF-DART tutorial", "DART input.nml", "Adaptive prior inflation"]
+
+[[group]]
+key = "review"
+title = "Project and workflow reviews"
+names = ["progress review", "DART workflow review"]
+
+[[group]]
+key = "mpi"
+title = "MPI hangs"
+names = ["MPI hang"]
+
+[[group]]
+key = "cc"
+title = "Claude Code itself"
+names = ["statusline", "Context window", "skill for Claude", "Session name",
+         "cleared claude session", "resume-command", "environment activation", "session navigation"]
+
+[[group]]
+key = "junk"
+title = "Redundant or stray"
+ids = ["05106cb2", "6b39cf27"]   # "Attach 0a11ca2b" (a resume attempt), "/resu,e" (a typo)
