@@ -7,6 +7,8 @@ __pycache__/
 .claude/
 # session transcripts dumped by the hooks in .claude/settings.json (scripts/transcript_to_md.py)
 notes/transcripts/
+# session index, rebuilt by the same hooks at every session start and end (scripts/session_index.py)
+notes/sessions.md
 
 # cases/ holds huge data (met_em, FILE:*, wrfinput/wrfbdy, wrfout, logs, links into shared
 # data). Ignore everything there and whitelist only the small config/notes files.

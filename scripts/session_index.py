@@ -10,7 +10,9 @@ scripts/transcript_to_md.py). Then one table of the hand-off notes in notes/hand
 - in: the session the note's title names ('# Hand-off: "<name>..."'), or else a session whose first
   prompt names the note's file; the date is that session's first.
 
-Usage: uv run scripts/session_index.py [--stdout]
+Run by the project hooks in .claude/settings.json at every session start and end (output discarded,
+since SessionStart output would go into Claude's context). By hand: uv run scripts/session_index.py
+[--stdout]; this also prints any entry of session_groups.toml that claims no session.
 """
 import datetime
 import glob
@@ -186,8 +188,11 @@ def main():
     if '--stdout' in sys.argv[1:]:
         print(text)
         return
-    with open(OUT, 'w') as f:
+    # Atomic, since the SessionStart/SessionEnd hooks of two sessions may run at once.
+    tmp = f'{OUT}.{os.getpid()}.tmp'
+    with open(tmp, 'w') as f:
         f.write(text)
+    os.replace(tmp, OUT)
     counts = ', '.join(f"{g['key']} {len(by_group[g['key']])}" for g in groups if g['key'] in by_group)
     print(f"{OUT}: {counts}; ungrouped {len(by_group.get(None, []))}; without prompts {len(empty)}")
     if unused:

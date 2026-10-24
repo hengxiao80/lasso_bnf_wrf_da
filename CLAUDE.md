@@ -107,8 +107,8 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 - `notes/handoffs/`: hand-off messages between sessions (`YYYY-MM-DD_<session title>.md`); the latest says where
   the work stands and what comes next.
 - `notes/sessions.md`: index of this repo's Claude Code sessions by group (session IDs, transcript dumps), plus a
-  table of the hand-off notes (written by / picked up by); rebuilt by `uv run scripts/session_index.py`, groups in
-  `notes/session_groups.toml`. A session named
+  table of the hand-off notes (written by / picked up by); rebuilt by `scripts/session_index.py` at every session
+  start and end (hooks in `.claude/settings.json`; not in git), groups in `notes/session_groups.toml`. A session named
   `<group>: ...` (e.g. `obs: part 11`) files itself; `claude -r obs:` lists that group in the picker.
 
 ## Environment and conventions
