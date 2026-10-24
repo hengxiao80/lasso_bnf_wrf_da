@@ -402,7 +402,9 @@ A second way to take MRMS, chosen per run: **`MRMS_FILTER=one_pass`** (vs `two_p
 | 2 | MADIS + mesonet (a), calm winds kept | `_meso_a_calmkeep` | one pass | `_meso_a` | nothing (set built) |
 | 3 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=one_pass` | `_madis_mrms1p` | nothing (set built) |
 | 4 | MADIS + MRMS | `_madis_mrms` | `MRMS_FILTER=two_pass` | `_madis_mrms2p` | `MRMS_INFLATION=both`, `MRMS_PASS2_DAMPING=1` (decided 10-21) |
-| 5 | everything | `_meso_a_calmkeep_mrms` | `MRMS_FILTER=one_pass` (decided 10-23) | to decide | nothing (set built); flavor 2 vs 5 |
+| 5 | everything (MADIS + mesonet (a) + MRMS) | `_meso_a_calmkeep_mrms` | `MRMS_FILTER=one_pass` (decided 10-23) | `_conv_refl_f2`, `_conv_refl_f5` | nothing (set built); flavor 2 vs 5 |
+
+Names: run 2's `_meso_a` includes all MADIS obs (METAR, ACARS, radiosondes, marine), not only the mesonet. From run 5 on (user, 2026-10-23) `RUN_NAME`s name observation families: `conv` = MADIS + mesonet, `refl` = MRMS reflectivity (radar radial velocities may come later), then the inflation flavor; the exact observation set and mesonet option are in each run's `settings.txt`.
 
 Run 2: the user first asked for calm winds dropped, then (2026-10-15) kept them ("does not matter really"), so it
 uses the built `obs_meso_a_calmkeep/` (Sec. 7). Run 1 is also the first test of the new
@@ -470,8 +472,18 @@ ms/ob as soon as it finishes.
 | 4b | 00:45 | mrms | 2 | 62 | 5 | 10 | 17 | 88,675 | 0.2 | 22 | 197 | 199 | 742 |
 | 4b | 01:00 | conv | 128 | 70 | 5 | 8 | 32 | 4,851 | 6.6 | 17 | | | |
 | 4b | 01:00 | mrms | 1 | 62 | 4 | 11 | 16 | 88,905 | 0.2 | 23 | 174 | 146 | 676 |
+| 5 `_conv_refl_f2` | 00:00 (cold start) | – | – | – | | | | | | | – | 134 | 135 |
+| 5 | 00:15 | joint | 88 | 133 | 8 | 10 | 63 | 93,094 | 0.7 | 45 | 97 | 127 | 515 |
+| 5 | 00:30 | joint | 84 | 136 | 5 | 10 | 65 | 95,770 | 0.7 | 49 | 147 | 129 | 564 |
+| 5 | 00:45 | joint | 84 | 136 | 10 | 10 | 66 | 96,303 | 0.7 | 43 | 131 | 131 | 551 |
+| 5 | 01:00 | joint | 83 | 155 | 4 | 10 | 84 | 98,688 | 0.9 | 49 | 137 | 135 | 577 |
+| 5 `_conv_refl_f5` | 00:00 (cold start) | – | – | – | | | | | | | – | 133 | 134 |
+| 5 f5 | 00:15 | joint | 92 | 152 | 12 | 10 | 84 | 93,094 | 0.9 | 39 | 145 | 130 | 587 |
+| 5 f5 | 00:30 | joint | 84 | 144 | 6 | 10 | 76 | 95,770 | 0.8 | 46 | 139 | 129 | 567 |
+| 5 f5 | 00:45 | joint | 83 | 139 | 11 | 10 | 69 | 96,303 | 0.7 | 42 | 142 | 128 | 563 |
+| 5 f5 | 01:00 | joint | 86 | 164 | 8 | 10 | 94 | 98,688 | 1.0 | 45 | 139 | 127 | 583 |
 
-s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min; run 3 job 1054809 (same nodes), 73 min (27 of them the `wrf.exe` hang); run 4 job 1054932 (same nodes), 48 min, no exit guard fired (filter with hcoll off from run 4 on; update, advance and total on the MRMS row); run 4b job 1054977 (same nodes), 49 min, no guard fired.
+s; run 1's 00:15–01:00 in job 1054795 (resumed, cirrus1–4, 17–52), 39 min; run 2 job 1054801 (same nodes), 44 min; run 3 job 1054809 (same nodes), 73 min (27 of them the `wrf.exe` hang); run 4 job 1054932 (same nodes), 48 min, no exit guard fired (filter with hcoll off from run 4 on; update, advance and total on the MRMS row); run 4b job 1054977 (same nodes), 49 min, no guard fired; run 5 `_conv_refl_f2` job 1057705 (cirrus58–97), 39 min, and `_conv_refl_f5` job 1057717 (same nodes), 41 min, no guard fired.
 sacct MaxRSS of run 1's filter steps 0.40, 1.99, 0.33, 2.00 GB per task (run 2: 1.99–2.00): unreliable for steps
 this short (sampled; the larger values in the steps that lived longer), so not used. Step 13's `rest` was 10–11 s.
 
@@ -790,3 +802,38 @@ guard, `driver: done`.
   the conventional-pass impact table (`mrms_two_pass_inflation.md` Sec. 8–9): no advantage found for two passes in
   DART, which does per family in one pass what HRRRDAS separates; HRRRDAS's reason for its two passes isn't stated
   in Dowell 2020 or Dowell et al. 2022. Run 5 in one pass, testing inflation flavor 2 against 5; RTPS later.
+
+**Run 5 `_conv_refl_f2` (job 1057705, submitted 2026-10-23 18:45 EDT, cirrus58–97):** everything in one pass (`OBS_NAME=_meso_a_calmkeep_mrms MRMS_FILTER=one_pass RUN_NAME=_conv_refl_f2`), inflation as run 3 (flavor 2, damping 0.9, sd 0.6). Compared with run 3 it shows the effect of the mesonet with MRMS, with run 2 the effect of MRMS with the mesonet. **Passed** (39 min): all 4 analyses `complete`, `check_cycle` passed, no CFL lines, no exit guard, `driver: done`. 93,094–98,688 obs per cycle.
+
+- **Radar as run 3:** 01:00 reflectivity prior 12.3 / +4.75, spread 7.16, posterior 6.74 / +2.75 dBZ; QC 7 29,110 of 80,507 (36 %; run 3 28,907); clear air 3.79 → 1.92 dBZ.
+- **The mesonet with MRMS (against run 3), 15-min forecast fits to METAR at 00:30 / 00:45 / 01:00:** T2 1.06 / 1.34 / 1.14 K (run 3 1.11 / 1.37 / 1.17); Q2 bias +0.11 / −0.19 / +0.12 g/kg (+0.31 / +0.24 / +0.49: run 3's moist bias gone); altimeter 1.14 / 1.19 / 0.99 hPa (1.14 / 1.25 / 0.99); 10-m U 1.38 / 2.45 / 1.44 m/s (1.37 / 2.37 / 1.41, slightly worse); ACARS within 0.02. Less prior spread: 01:00 U 1.31 m/s (1.35), QVAPOR 0.374 g/kg (0.407), MU 55.1 Pa (59.3); at the METAR sites T2 0.37 K (0.50). 00:45 has only 27–32 METAR obs per type.
+- **MRMS with the mesonet (against run 2):** surface fits nearly unchanged (mesonet T prior 1.19 / 1.22 / 1.26 K, run 2 1.20 / 1.23 / 1.27; mesonet altimeter, evaluated, 1.36 / 1.37 / 1.24 hPa, run 2 1.36 / 1.39 / 1.25), worse at 00:45 for METAR 10-m U (2.45 against 2.16 m/s) and T2 (1.34 against 1.20 K). Inflation at 01:00 U mean 1.098 (run 2 1.050, run 3 1.097), max 4.67 (3.24, 4.67); MU mean 1.148 (1.168, 1.144), max 3.01 (3.12, 2.66).
+- **Shock:** post-analysis |dpsfc/dt| (max over members, hPa/3h), steps 2–4: 00:15 305–348 (run 3 277–308, run 2 205–261), 00:30 440–516 (422–500, 261–374), 00:45 543–618 (539–632, 246–332), 01:00 636–711 (642–732, 321–452); minutes 5–15 at 01:00 91 (90, 83). So the shock comes with MRMS; the mesonet adds a little in the first two cycles.
+- **Spread over the cycle:** the analysis has less spread than the forecast in every cycle, all points and echo columns (U ×0.87–0.97, MU ×0.64–0.96; 00:45 echo MU ×0.956 against run 3's ×1.019).
+- **Cost:** cycle 515–577 s (run 3 622–676 without the hang). Filter srun 133–155 s, no guard (assimilation 63–84 s, rest 43–49 s; run 3 40–64 and 25); prep 83–88 s and update 97–147 s shorter than run 3's 127–135 and 172–189, likely the node set or file-system load rather than the run. Filter MaxRSS 1.91 GB per task. Disk: `output_conv_refl_f2/` 335 GB, `run_conv_refl_f2/` 77 GB.
+
+**Run 5 `_conv_refl_f5` (job 1057717, submitted 2026-10-23 19:39 EDT, cirrus58–97):** as `_conv_refl_f2` with `INF_FLAVOR=5 INF_SD_LOWER_BOUND=0.3` (user, 2026-10-23); `inf_lower_bound` stays 1.0 (deflation possibly tested later). The 00:15 `input.nml` had `inf_flavor = 5`, `inf_sd_lower_bound = 0.3`, `inf_sd_initial = 0.6`. **Passed** (41 min): all 4 analyses `complete`, `check_cycle` passed, no CFL lines, no exit guard, `driver: done`. The 00:15 analyses are bit-identical to flavor 2's (members 1 and 5 checked; λ = 1 everywhere in the first cycle).
+
+Against flavor 2 at 01:00 (λ and sd: `postassim_priorinf_*`; shock: steps 2–4, max over members, hPa/3h):
+
+| 01:00 | flavor 2 | flavor 5 |
+|---|---|---|
+| λ mean, U | 1.098 | 1.088 |
+| λ mean, MU | 1.148 | 1.089 |
+| λ > 3, U | 0.48 % | 1.0 % |
+| λ at the cap 5, U | 0 | 16,681 pts ¹ |
+| sd > 0.6, U | 0 | 17 % |
+| sd at the floor, MU | – | 35 % |
+| prior spread, U | 1.31 m/s | 1.26 m/s |
+| prior spread, MU | 55.1 Pa | 52.1 Pa |
+| reflectivity prior | 12.3 dBZ | 12.2 dBZ |
+| radar QC 7 | 29,110 | 29,968 |
+| shock | 636–711 | 613–690 |
+
+¹ 0.05 % of the points; 11 at 00:30, 1,778 at 00:45. QRAIN and REFL_10CM 0.1 %.
+
+- **The sd grew more often than it fell.** U, V, THM, QVAPOR: 4–6 % of the points at the floor 0.3 and 16–17 % above 0.6 at 01:00 (99.9th percentile 2.7, max 9–10); MU 35 % at the floor; hydrometeors and REFL_10CM almost none (< 0.05 %). Expected before the run: the sd falls to the floor where obs are dense. What happened instead is case 3 of `dart_adaptive_inflation.md` Sec. 9: where innovations stay larger than λ predicts, the sd grows by up to 5 % per accepted update, with no upper bound on the sd.
+- **λ: less on average, a longer tail.** Points at the cap grew about tenfold per cycle; the cap points sit at model levels 0–64 of 149 (median 30–33). After damping, 0.001–0.012 % of the points got λ = 4.6 in the 01:00 cycle (U, THM, QRAIN); the 01:15 cycle would get the 0.05–0.1 %. Share of the points with λ = 1 nearly the same as flavor 2 (U 56 % against 57 %, MU 40 % against 41 % at 01:00).
+- **Fits nearly the same as flavor 2:** METAR 15-min forecasts at 00:30 within 0.01; at 01:00 T2 1.15 K (1.14), 10-m U 1.43 m/s (1.44), Q2 1.15 g/kg (1.18), altimeter 0.96 hPa (0.99), mesonet altimeter 1.22 hPa (1.24); at 00:45 METAR T2 1.12 K against 1.34 K (32 obs). ACARS within 0.01. Analyses reduce spread a little more (U ×0.949 against ×0.958 at 01:00).
+- **Wrong-root candidates** (radar, QC 0, σo²/σp² ≤ 0.2, d²/(σp²+σo²) > 7; `dart_adaptive_inflation.md` Sec. 5.3): 19 / 32 / 55 at 00:30 / 00:45 / 01:00 (0.04–0.11 %), flavor 2 24 / 30 / 49. No difference.
+- **Cost:** cycle 563–587 s; filter srun 139–164 s (assimilation 69–94 s against 63–84 s); MaxRSS 1.91 GB per task. Disk: `output_conv_refl_f5/` 336 GB, `run_conv_refl_f5/` 77 GB.

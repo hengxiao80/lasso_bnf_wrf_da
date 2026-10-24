@@ -531,6 +531,15 @@ while 2 runs, approving each step).
 - **Inflation next:** run 5 with flavor 2 against flavor 5 (`INF_FLAVOR`, with `INF_SD_LOWER_BOUND` < 0.6 for a real
   flavor-5 test, entry of 2026-10-15); RTPS (posterior `inf_flavor` 4) later, before the larger ensemble.
 
+## Run 5 inflation: flavor 2 against flavor 5 with sd floor 0.3 (`&filter_nml :: inf_flavor, inf_sd_lower_bound, inf_lower_bound`) — 2026-10-23
+
+- **Settings.** Flavor 2 (`_conv_refl_f2`, job 1057705) as run 3: `inf_flavor = 2`, `inf_damping = 0.9`, `inf_sd_initial = inf_sd_lower_bound = 0.6`. Flavor 5 (`_conv_refl_f5`, job 1057717): `INF_FLAVOR=5 INF_SD_LOWER_BOUND=0.3` (user), initial sd 0.6, `inf_sd_max_change = 1.05`, damping 0.9. The floor 0.3 was preferred to 0.1 (λ would barely move in 4 cycles) and to 0.6 (would repeat step 13's `_hph_f5`, mean update only).
+- **`inf_lower_bound` stays 1.0 (no deflation)** for now (user): with 5 members too little spread is the likelier problem. DART's guide suggests 0 for flavor 5; the user noted it may need testing later (needs a new per-run setting in `experiment.sh`, `prep_filter.sh`, `driver.sh`/`settings.txt`).
+- **Flavor 2:** passed; inflation as run 3 (01:00 λ mean / max: U 1.098 / 4.67, MU 1.148 / 3.01); every analysis has less spread than its forecast.
+- **Flavor 5, the sd:** expected before the run to fall to the floor where obs are dense. That happened mainly for MU (35 % of the points at 0.3 at 01:00). For U, V, THM, QVAPOR only 4–6 % reached the floor and 16–17 % grew above 0.6 (01:00: 99.9th percentile 2.7, max 9–10). This is case 3 of `dart_adaptive_inflation.md` Sec. 9: where innovations stay larger than λ predicts, the sd grows by up to 5 % per accepted update, with no upper bound.
+- **Flavor 5, λ: less inflation on average, a longer tail.** 01:00 λ mean U 1.088 (flavor 2 1.098), MU 1.089 (1.148); share above 3, U 1.0 % (0.48 %). Points at the cap 5.0 (U): 11, 1,778, 16,681 at 00:30, 00:45, 01:00 (0.05 % of the points; QRAIN and REFL_10CM 0.1 %), about ten times more each cycle; none with flavor 2. After damping, 0.001–0.012 % of the points got λ = 4.6 in the 01:00 cycle.
+- **Flavor 5, the outcome:** observation fits nearly the same as flavor 2, prior spread 2–5 % lower, post-analysis shock slightly smaller. Wrong-root candidates (radar, QC 0, σo²/σp² ≤ 0.2, d²/(σp²+σo²) > 7) the same in both runs: 49–55 obs at 01:00 (0.1 %). Details: `obs_expansion.md` Sec. 9, run 5.
+
 ## Adaptive prior inflation, flavors 2 and 5: math and code (`&filter_nml :: inf_*`) — 2026-10-23
 
 Walk-through note with the derivations: `notes/dart_adaptive_inflation.md` (DART code; Anderson 2009 and El Gharamti 2018, both in `notes/`; checks with DART's routines compiled stand-alone). Points that bear on run 5:
