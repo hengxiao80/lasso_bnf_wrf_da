@@ -2,7 +2,7 @@
 #
 # A session goes to the first of these that claims it:
 #   1. a group whose `ids` holds the first 8 characters of its session ID;
-#   2. a group whose key starts its name ("obs: part 11" goes to `obs`);
+#   2. a group whose key starts its name ("expansion: part 11" goes to `expansion`);
 #   3. the first group, in file order, with a `names` entry found in the name you
 #      gave it or in Claude Code's own title (case, spaces and punctuation ignored).
 # `names` entries are search patterns, not a list of sessions: "Adding more obs"

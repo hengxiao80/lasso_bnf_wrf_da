@@ -109,7 +109,7 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 - `notes/sessions.md`: index of this repo's Claude Code sessions by group (session IDs, transcript dumps), plus a
   table of the hand-off notes (written by / picked up by); rebuilt by `scripts/session_index.py` at every session
   start and end (hooks in `.claude/settings.json`; not in git), groups in `notes/session_groups.toml`. A session named
-  `<group>: ...` (e.g. `obs: part 11`) files itself; `claude -r obs:` lists that group in the picker.
+  `<group>: ...` (e.g. `expansion: part 11`) files itself; `claude -r expansion:` lists that group in the picker.
   `scripts/session_delete.py` deletes the sessions of a group (also `empty`; ungrouped ones only by ID) or given IDs, with what
   Claude Code keeps for them under `~/.claude`; it lists them and asks first (`-n`: only list), skips running ones.
 
