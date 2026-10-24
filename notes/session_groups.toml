@@ -11,7 +11,7 @@
 # prompt are only counted. Groups appear in the index in this order.
 
 [[group]]
-key = "obs"
+key = "expansion"
 title = "Observation expansion and 1-hour runs"
 names = ["Adding more obs"]
 
@@ -21,8 +21,8 @@ title = "5-member DA pilot"
 names = ["5-member pilot", "IC and LBC perturbation"]
 
 [[group]]
-key = "dart"
-title = "Learning WRF-DART"
+key = "learn"
+title = "Learning WRF-DART and other things"
 names = ["learn WRF-DART", "WRF-DART tutorial", "DART input.nml", "Adaptive prior inflation"]
 
 [[group]]
@@ -31,12 +31,12 @@ title = "Project and workflow reviews"
 names = ["progress review", "DART workflow review"]
 
 [[group]]
-key = "mpi"
-title = "MPI hangs"
+key = "software"
+title = "Other software issues"
 names = ["MPI hang"]
 
 [[group]]
-key = "cc"
+key = "claude"
 title = "Claude Code itself"
 names = ["statusline", "Context window", "skill for Claude", "Session name",
          "cleared claude session", "resume-command", "environment activation", "session navigation"]
