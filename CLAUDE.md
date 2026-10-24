@@ -106,12 +106,14 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 - `patches/`: local deviations from the pinned upstream code, with the reasons.
 - `notes/handoffs/`: hand-off messages between sessions (`YYYY-MM-DD_<session title>.md`); the latest says where
   the work stands and what comes next.
-- `notes/sessions.md`: index of this repo's Claude Code sessions by group (session IDs, transcript dumps), plus a
-  table of the hand-off notes (written by / picked up by); rebuilt by `scripts/session_index.py` at every session
-  start and end (hooks in `.claude/settings.json`; not in git), groups in `notes/session_groups.toml`. A session named
-  `<group>: ...` (e.g. `expansion: part 11`) files itself; `claude -r expansion:` lists that group in the picker.
-  `scripts/session_delete.py` deletes the sessions of a group (also `empty`; ungrouped ones only by ID) or given IDs, with what
-  Claude Code keeps for them under `~/.claude`; it lists them and asks first (`-n`: only list), skips running ones.
+- `notes/sessions.md` (not in git): index of this repo's Claude Code sessions by group (session IDs, transcript
+  dumps), a table of the hand-off notes (written by / picked up by) and a Checks section; rebuilt at every session
+  start and end by `claude-sessions` (`../claude_sessions`, README there; run by user-level hooks in
+  `~/.claude/settings.json`). Groups are made only in `.claude-sessions.toml`. A session named `<group>: ...` (e.g.
+  `expansion: part 11`) files itself into an existing group; `claude -r expansion:` lists that group in the picker.
+  `claude-sessions delete` deletes the sessions of a group (also `empty`; ungrouped ones only by ID) or given IDs,
+  with what Claude Code keeps for them under `~/.claude`; it lists them and asks first (`-n`: only list), skips
+  running ones. Transcript dumps (before every compaction and on `/clear`): `notes/transcripts/` (not in git).
 
 ## Environment and conventions
 

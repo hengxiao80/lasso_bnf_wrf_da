@@ -5,9 +5,9 @@ __pycache__/
 
 # Claude Code local state
 .claude/
-# session transcripts dumped by the hooks in .claude/settings.json (scripts/transcript_to_md.py)
+# session transcripts dumped by the claude-sessions hooks (../claude_sessions; config .claude-sessions.toml)
 notes/transcripts/
-# session index, rebuilt by the same hooks at every session start and end (scripts/session_index.py)
+# session index, rebuilt by the same hooks at every session start and end (claude-sessions index)
 notes/sessions.md
 
 # cases/ holds huge data (met_em, FILE:*, wrfinput/wrfbdy, wrfout, logs, links into shared
