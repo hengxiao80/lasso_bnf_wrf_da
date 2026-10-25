@@ -2,6 +2,12 @@
 
 Written 2026-10-22 from a question-and-answer walk-through with the user, as a reference to come back to when the reasoning gets tangled. It explains how things work; the decisions and run results are elsewhere (`da_5member_pilot_steps.md`, `obs_expansion.md`, `mrms_two_pass_inflation.md`, `dart_namelist_discussion_log.md`). Code references: DART `7bbd35a09` (`../software/DART`; `filter_mod.f90`, `assim_tools_mod.f90` and `quality_control_mod.f90` under `assimilation_code/modules/assimilation/`, `models/wrf/model_mod.f90`, `observations/forward_operators/obs_def_{altimeter,radar}_mod.f90`) and this repo at `5d5ee8f`.
 
+**Papers.**
+- **EAKF:** Anderson (2001), "An ensemble adjustment Kalman filter for data assimilation", MWR 129, 2884–2903 (PDF in `notes/`).
+- **Regression step** (Sec. 3, step 2): Anderson (2003), "A local least squares framework for ensemble filtering", MWR 131, 634–642 (PDF in `notes/`).
+- **Gaspari–Cohn localization:** Gaspari and Cohn (1999), "Construction of correlation functions in two and three dimensions", QJRMS 125, 723–757, doi:10.1002/qj.49712555417 (PDF in `notes/`); DART uses its Eq. (4.10).
+- **Sampling-error correction and adaptive inflation:** their papers are listed in `dart_sampling_error_correction.md` and `dart_adaptive_inflation.md`.
+
 ## 1. One cycle at time t (our scripts)
 
 `slurm.cycle` → `driver.sh` (loop over the cycles, resumable, one `settings.txt` per run) → `cycle_job.sh` per cycle:
@@ -63,7 +69,7 @@ Outlier check (`check_outlier_threshold`, `quality_control_mod.f90:241`): |mean 
 For each observation in turn:
 
 1. The rank that owns the observation broadcasts its prior ensemble H(x) (as updated by the observations before it) and its QC (`:658–666`). Every rank then computes the same EAKF observation-space increment itself (`obs_increment`, `:686`). Only the observations are owned by single ranks; the state is spread over all ranks (`distributed_state`) and each rank updates its own state elements, which is why 40 × 32 ranks took the observation loop from 97 s to 10 s.
-2. Each state element within 2 × `cutoff` (300 km horizontally; vertically in scale height) gets increment = `final_factor` × regression × observation-space increment (`obs_updates_ens`, `:2005`). `final_factor` = Gaspari–Cohn weight × impact-table factor (`cov_and_impact_factors`); the regression is reduced by the sampling-error correction (`update_from_obs_inc`, `:1534`), which matters a lot with 5 members.
+2. Each state element within 2 × `cutoff` (300 km horizontally; vertically in scale height) gets increment = `final_factor` × regression × observation-space increment (`obs_updates_ens`, `:2005`). `final_factor` = Gaspari–Cohn weight × impact-table factor (`cov_and_impact_factors`); the regression is reduced by the sampling-error correction (`update_from_obs_inc`, `:1534`), which matters a lot with 5 members (details: `dart_sampling_error_correction.md`).
 3. At the same point that element's λ is updated, from the observation's original prior mean and variance (`orig_obs_prior_*`), the observation and its correlation with the element (`update_varying_state_space_inflation`).
 4. The H(x) of the observations **not yet used** is updated by the same regression (`OBS_UPDATE`, `:808–835`). The order of the observations therefore matters a little, and the "prior" stored in `obs_seq.final` is the original one, from before any of these updates.
 

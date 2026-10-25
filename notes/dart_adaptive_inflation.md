@@ -5,13 +5,15 @@ Written 2026-10-23 for the run-5 comparison (flavor 2 against flavor 5).
 **Sources.**
 - **Code:** DART `7bbd35a09` (`../software/DART/assimilation_code/modules/assimilation/`): `filter_mod.f90`, `assim_tools_mod.f90`, `adaptive_inflate_mod.f90`. Line numbers below refer to these files.
 - **Flavor 5:** El Gharamti (2018), "Enhanced adaptive inflation algorithm for ensemble filters", MWR 146, 623–640 (**G18** below; PDF in `notes/`). Equation numbers "G18 (n)" are the paper's.
-- **Flavor 2:** Anderson (2009), "Spatially and temporally varying adaptive covariance inflation for ensemble filters", Tellus 61A, 72–83 (**A09**; PDF in `notes/`). Equation numbers "A09 (n)" are the paper's. Its predecessor, Anderson (2007), Tellus 59A, 210–224 (**A07**, also in `notes/`), has one spatially constant $\lambda$ (flavor 3) and the sd method that A09 reuses.
+- **Flavor 2:** Anderson (2009), "Spatially and temporally varying adaptive covariance inflation for ensemble filters", Tellus 61A, 72–83 (**A09**; PDF in `notes/`). Equation numbers "A09 (n)" are the paper's. Its predecessor, Anderson (2007a), "An adaptive covariance inflation error correction algorithm for ensemble filters", Tellus 59A, 210–224 (**A07a**, also in `notes/`), has one spatially constant $\lambda$ (flavor 3) and the sd method that A09 reuses. The letters follow A09's reference list; A07b, the hierarchical-filter paper, is cited in `dart_sampling_error_correction.md`.
+- **Named only:** the EAKF, Anderson (2001), "An ensemble adjustment Kalman filter for data assimilation", MWR 129, 2884–2903 (**A01**); the Gaspari–Cohn localization, Gaspari and Cohn (1999), "Construction of correlation functions in two and three dimensions", QJRMS 125, 723–757, doi:10.1002/qj.49712555417 (**GC99**; its Eq. (4.10)). Both PDFs are in `notes/`.
 - **DART's guide:** `guide/inflation.rst`.
 - **Numbers in Sec. 7–9:** from a line-by-line Python translation of the routines, and from DART's routines copied verbatim into a stand-alone module and compiled with our ifort, in both single and double precision (Sec. 7).
 
 **Related notes.**
 - `dart_workflow_walkthrough.md` Sec. 2–3 (filter's order of operations, the observation loop).
 - `mrms_two_pass_inflation.md` Sec. 2 (what one filter pass does with λ).
+- `dart_sampling_error_correction.md` (the sampling-error correction, which shrinks the state update but not the correlation the inflation uses).
 - Discussion-log entries of 2026-10-02, 10-03, 10-15, 10-22, 10-23.
 
 **Typora.** Display equations are `$$` blocks. Inline math (`$...$`) needs *Preferences → Markdown → Inline Math*.
@@ -210,7 +212,7 @@ $$
 
 ### 4.1 The new mode (`linear_bayes`, `:1060–1116`; A09 (12)–(13), Appendix A)
 
-Why linearize: for $\gamma = 1$ the exact mode solves a cubic (A07; that solution is still in `bayes_cov_inflate`, commented out, `:789–846`), and for $0 < \gamma < 1$ a sixth-order equation (A09 Sec. 3).
+Why linearize: for $\gamma = 1$ the exact mode solves a cubic (A07a; that solution is still in `bayes_cov_inflate`, commented out, `:789–846`), and for $0 < \gamma < 1$ a sixth-order equation (A09 Sec. 3).
 
 The prior is $p(\lambda) = N(\bar\lambda, \sigma_\lambda^2)$. With the linearized likelihood the posterior is
 
