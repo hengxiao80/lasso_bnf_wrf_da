@@ -201,7 +201,7 @@ F = F[:, keep]; G = np.diag(np.sqrt(evals[keep]))
 M = G @ F.T @ Hj.T @ Hj @ F @ G / R[0]
 mu, U = np.linalg.eigh(M)
 Bm = np.diag(1 / np.sqrt(1 + mu))
-A = F @ G @ U @ Bm @ np.linalg.inv(G) @ F.T          # as printed in A01 App. A
+A = F @ G @ U @ Bm @ np.linalg.inv(G) @ F.T          # A01 App. A (p. 2901)
 Asym = F @ G @ U @ Bm @ U.T @ np.linalg.inv(G) @ F.T   # with the trailing U^T
 Sp_inv_pinv = F @ np.diag(1 / evals[keep]) @ F.T
 Su = A @ S @ A.T
@@ -210,10 +210,14 @@ Za = zu[:, None] + A @ Zp
 Zs = zu[:, None] + Asym @ Zp
 print(f"max|DART - GSI EnSRF| = {abs(Xd - Xg).max():.2e}")
 print(f"max|DART - ETKF(sym)| = {abs(Xd - Xl).max():.2e}")
-print(f"A01 as printed : max|mean diff| = {abs(Xd.mean(1) - Za[:nx].mean(1)).max():.2e}"
+print(f"A01, A applied : max|mean diff| = {abs(Xd.mean(1) - Za[:nx].mean(1)).max():.2e}"
       f"  max|cov diff| = {abs(ens_cov(Xd) - ens_cov(Za[:nx])).max():.2e}"
       f"  max|member diff| = {abs(Xd - Za[:nx]).max():.2e}")
 print(f"A01 with U^T   : max|member diff| = {abs(Xd - Zs[:nx]).max():.2e}")
+# A01 (16) and App. A apply A^T to the deviations, while Sigma_u = A Sigma A^T
+Zt = zu[:, None] + A.T @ Zp
+print(f"A01 A^T applied (as printed in (16)): max|cov - Sigma_u| = {abs(ens_cov(Zt) - Su).max():.2e}"
+      f"  (A applied: {abs(ens_cov(Za) - Su).max():.2e})")
 print(f"(increment size max  = {abs(Xd - X).max():.2e})")
 
 # --------------------------------------------------------- 2. many obs, no loc

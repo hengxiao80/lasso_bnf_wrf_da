@@ -447,7 +447,12 @@ DART's form loses about 1.5–2 times more, but both stay within a few float32 u
 | sampling error | A01: none | SEC (A12) |
 
 Notes:
-- **A01's Appendix A** builds the adjustment matrix from an SVD of the prior covariance and of $\mathbf H^T\mathbf R^{-1}\mathbf H$. As printed, $\mathbf A = \mathbf F\mathbf G\mathbf U\mathbf B\mathbf G^{-1}\mathbf F^T$ in our notation of their symbols. It gives the right mean and covariance (check 1: differences 3e-15) but different members (up to 1.16, against increments up to 1.41). With a trailing $\mathbf U^T$, $\mathbf A = \mathbf F\mathbf G\mathbf U\mathbf B\mathbf U^T\mathbf G^{-1}\mathbf F^T$, it reproduces DART's update to 6e-15. T03 (17)–(20) use the printed form and note that the EAKF and ETKF ensembles then differ by an orthogonal rotation. The reference for what DART computes is A03 (19)–(27), and A01 Sec. 2c already used the scalar, pairwise form in its experiments.
+- **A01's Appendix A** builds the adjustment matrix from an SVD of the prior covariance and of $\mathbf H^T\mathbf R^{-1}\mathbf H$: $\mathbf\Sigma_u = \mathbf A\mathbf\Sigma\mathbf A^T$ with $\mathbf A = (\mathbf F^T)^{-1}\mathbf G^T(\mathbf U^T)^{-1}\mathbf B^T(\mathbf G^T)^{-1}\mathbf F^T = \mathbf F\mathbf G\mathbf U\mathbf B\mathbf G^{-1}\mathbf F^T$ (checked on the rendered page, A01 p. 2901). Three readings, in check 1:
+  - **As printed,** the members are updated with $\mathbf A^T$: $z^u_i = \mathbf A^T(z^p_i-\bar z^p)+\bar z^u$ (A01 (16) and App. A). That gives covariance $\mathbf A^T\mathbf\Sigma\mathbf A$, not $\mathbf\Sigma_u$: the error is 12.8 in check 1. A transpose slip; A03 (17) and T03 (17) write the update with $\mathbf A$.
+  - **With $\mathbf A$** the mean and covariance are right (3e-15), but the members differ from DART's (up to 1.16, against increments up to 1.41).
+  - **With a trailing $\mathbf U^T$,** $\mathbf A = \mathbf F\mathbf G\mathbf U\mathbf B\mathbf U^T\mathbf G^{-1}\mathbf F^T$ reproduces DART's update to 6e-15.
+
+  T03 (18)–(20) use the form without $\mathbf U^T$ and note that the EAKF and ETKF ensembles then differ by an orthogonal rotation. The reference for what DART computes is A03 (19)–(27), and A01 Sec. 2c already used the scalar, pairwise form in its experiments.
 - **AC07's H(x) update** covers all later observations; DART only visits those within $2c$, which is the same since the weight is zero beyond.
 
 ## 9. The other ensemble filters
@@ -654,7 +659,8 @@ Conventional-observation weights, $d_v$ in scale heights:
 | # | check | result |
 |---|---|---|
 | 1 | one ob: DART vs GSI EnSRF, ETKF | 2e-16, 7e-16 |
-| 1 | one ob: A01 App. A as printed | mean, cov 3e-15; members 1.16 |
+| 1 | A01 App. A, $\mathbf A^T$ as printed | cov wrong by 12.8 |
+| 1 | A01 App. A, $\mathbf A$ applied | mean, cov 3e-15; members 1.16 |
 | 1 | A01 with $\mathbf U^T$ | 6e-15 |
 | 2 | 20 obs, no loc.: serial vs Kalman | 2e-15 |
 | 2 | order A vs B | mean, cov 8e-16; members 0.09 |
