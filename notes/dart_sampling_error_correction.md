@@ -16,7 +16,7 @@ Written 2026-10-25, to explain step 2 of the observation loop (`dart_workflow_wa
   - `assimilation_code/programs/gen_sampling_err_table/`: the table generator `gen_sampling_err_table.f90`, its `.rst`, `work/README` (with a "Theory Discussion" by J. Anderson) and the table shipped with DART, `work/sampling_error_correction_table.nc` (our `SEC_TABLE` in `experiment.sh`).
 - **Numbers:** from that table, interpolated as `get_correction_from_table` does. The Monte Carlo numbers in Sec. 3 and 6 come from a Python re-creation of the generator (4×10⁶ samples for N = 5, 2×10⁶ for N = 10, 10⁶ for N = 50; DART's table uses 10⁸). It reproduces the shipped table within its sampling noise (Sec. 6).
 
-**Related notes.** `dart_workflow_walkthrough.md` Sec. 3 (where SEC sits in the observation loop); `dart_adaptive_inflation.md` Sec. 3.2–3.3 (the inflation update uses the sample correlation from before SEC). That note calls the sample correlation $r_{jk}$ and uses $\alpha$, $\beta$ for the inverse-gamma parameters; here the sample correlation is $\hat r$ as in A12, and the SEC factor is A12's $a$ (DART's `alpha`).
+**Related notes.** `dart_eakf.md` (the EAKF whose regression SEC modifies); `dart_workflow_walkthrough.md` Sec. 3 (where SEC sits in the observation loop); `dart_adaptive_inflation.md` Sec. 3.2–3.3 (the inflation update uses the sample correlation from before SEC). That note calls the sample correlation $r_{jk}$ and uses $\alpha$, $\beta$ for the inverse-gamma parameters; here the sample correlation is $\hat r$ as in A12, and the SEC factor is A12's $a$ (DART's `alpha`).
 
 **Typora.** Display equations are `$$` blocks. Inline math (`$...$`) needs *Preferences → Markdown → Inline Math*.
 

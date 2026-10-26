@@ -3,7 +3,7 @@
 Written 2026-10-22 from a question-and-answer walk-through with the user, as a reference to come back to when the reasoning gets tangled. It explains how things work; the decisions and run results are elsewhere (`da_5member_pilot_steps.md`, `obs_expansion.md`, `mrms_two_pass_inflation.md`, `dart_namelist_discussion_log.md`). Code references: DART `7bbd35a09` (`../software/DART`; `filter_mod.f90`, `assim_tools_mod.f90` and `quality_control_mod.f90` under `assimilation_code/modules/assimilation/`, `models/wrf/model_mod.f90`, `observations/forward_operators/obs_def_{altimeter,radar}_mod.f90`) and this repo at `5d5ee8f`.
 
 **Papers.**
-- **EAKF:** Anderson (2001), "An ensemble adjustment Kalman filter for data assimilation", MWR 129, 2884–2903 (PDF in `notes/`).
+- **EAKF:** Anderson (2001), "An ensemble adjustment Kalman filter for data assimilation", MWR 129, 2884–2903 (PDF in `notes/`). The EAKF in full, and its relation to the EnKF, EnSRF (HRRRDAS) and LETKF: `dart_eakf.md`.
 - **Regression step** (Sec. 3, step 2): Anderson (2003), "A local least squares framework for ensemble filtering", MWR 131, 634–642 (PDF in `notes/`).
 - **Gaspari–Cohn localization:** Gaspari and Cohn (1999), "Construction of correlation functions in two and three dimensions", QJRMS 125, 723–757, doi:10.1002/qj.49712555417 (PDF in `notes/`); DART uses its Eq. (4.10).
 - **Sampling-error correction and adaptive inflation:** their papers are listed in `dart_sampling_error_correction.md` and `dart_adaptive_inflation.md`.

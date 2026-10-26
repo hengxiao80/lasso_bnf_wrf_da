@@ -14,6 +14,7 @@ Written 2026-10-23 for the run-5 comparison (flavor 2 against flavor 5).
 - `dart_workflow_walkthrough.md` Sec. 2–3 (filter's order of operations, the observation loop).
 - `mrms_two_pass_inflation.md` Sec. 2 (what one filter pass does with λ).
 - `dart_sampling_error_correction.md` (the sampling-error correction, which shrinks the state update but not the correlation the inflation uses).
+- `dart_eakf.md` (the EAKF update that the inflated prior feeds; RTPS as HRRRDAS uses it, Sec. 10–11).
 - Discussion-log entries of 2026-10-02, 10-03, 10-15, 10-22, 10-23.
 
 **Typora.** Display equations are `$$` blocks. Inline math (`$...$`) needs *Preferences → Markdown → Inline Math*.

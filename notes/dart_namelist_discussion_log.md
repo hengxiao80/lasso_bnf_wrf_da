@@ -264,3 +264,13 @@ Reference note with the math (Anderson 2012, A12), the table generator and the c
 - **DART's a is not exactly A12's formula:** the generator uses the spread of the regression with the sample standard deviations (A12 assumes those exact) and an extra 1 + 1/N. At N = 5 its a is 1.2–1.8 times smaller than A12 (9)–(13) gives; at N = 50 they agree within 2 %.
 - **Not touched by SEC:** the observation-space increment, and the adaptive-inflation update, which uses r̂ from before SEC (`notes/dart_adaptive_inflation.md`).
 - **Untested for us:** A12 found that SEC makes analyses slightly more unbalanced. All our runs have it on, so its share of our post-analysis shock is unknown; a run with `sampling_error_correction = .false.` would show it.
+
+## The EAKF itself (`&algorithm_info_nml :: qceff_table_filename`; `&assim_tools_nml :: cutoff, sort_obs_inc, spread_restoration`) — 2026-10-25
+
+Reference note with the math (Anderson 2001, 2003; Anderson and Collins 2007), the code path and the comparison with the EnKF, EnSRF, ETKF/LETKF and HRRRDAS: `notes/dart_eakf.md`.
+
+- **`qceff_table_filename = ''`:** every observation quantity gets the EAKF with normal distributions, and the QCEFF probit transforms are the identity. We run exactly the EAKF of A01/A03.
+- **`sort_obs_inc`:** only the perturbed-observation EnKF (`obs_increment_enkf`) uses it; for the EAKF ours (`.false.`) and the code default (`.true.`) give the same result. **`spread_restoration = .true.`** stops filter in this DART version.
+- **Same update as HRRRDAS:** GSI-EnKF's serial EnSRF (`deterministic = .true.`) is algebraically identical to DART's EAKF, member by member, also with localization (checked with translations of both codes). Our `cutoff` 0.0235 (and 0.001413 for radar) gives HRRRDAS's zero-weight distances, but DART's 3-D weight is one Gaspari–Cohn of the combined distance while GSI multiplies a horizontal and a vertical one, so DART's is smaller off the axes (e.g. 0.029 against 0.043 at 150 km and 0.25 scale height).
+- **HRRRDAS-like inflation is available:** RTPS is `&filter_nml :: inf_flavor(2) = 4` with α in `inf_initial(2)`; DART's formula is GSI's, and no check against α > 1 (HRRRDAS uses 1.08) was found. Still to be decided (entry of 2026-10-23).
+- **Open diagnostic:** serial processing with localization depends on the observation order and is weakest for accurate, dense observations against a large spread (Nerger 2015), i.e. MRMS in convection. One cycle rerun with the MRMS observations reversed in `obs_seq.joint` would show how much our radar analyses depend on the order.
