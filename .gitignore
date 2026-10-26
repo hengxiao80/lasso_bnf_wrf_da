@@ -9,6 +9,8 @@ __pycache__/
 notes/transcripts/
 # session index, rebuilt by the same hooks at every session start and end (claude-sessions index)
 notes/sessions.md
+# paper PDFs (publishers' copies) kept for reading alongside the notes
+notes/papers/
 
 # cases/ holds huge data (met_em, FILE:*, wrfinput/wrfbdy, wrfout, logs, links into shared
 # data). Ignore everything there and whitelist only the small config/notes files.
