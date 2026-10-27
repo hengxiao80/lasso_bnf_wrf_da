@@ -1,4 +1,4 @@
-# Hand-off: "flavor5_wrong_root": the wrong root in DART's flavor-5 inflation update
+# Hand-off: "DART inflation flavor 5 wrong root issue": the wrong root in DART's flavor-5 inflation update
 
 Written 2026-10-27 during session "learn: inflation Q&A", which goes on with the Q&A on `notes/dart_adaptive_inflation.md` (this is a branch off it). No jobs running.
 
@@ -56,4 +56,4 @@ Repo: `/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da` (WRF-DART for L
 
 ## Starting the session
 
-Name it `flavor5_wrong_root` (the `review` group claims that name, `.claude-sessions.toml`), and name this file in the first prompt (`notes/handoffs/2026-10-27_flavor5_wrong_root.md`).
+Name it `DART inflation flavor 5 wrong root issue` (the `review` group claims that name, `.claude-sessions.toml`), and name this file in the first prompt (`notes/handoffs/2026-10-27_dart_inflation_flavor5_wrong_root_issue.md`).

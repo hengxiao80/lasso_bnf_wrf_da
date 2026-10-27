@@ -36,7 +36,7 @@ names = ["learn WRF-DART", "WRF-DART tutorial", "DART input.nml", "Adaptive prio
 [[group]]
 key = "review"
 title = "Project and workflow reviews"
-names = ["progress review", "DART workflow review", "flavor5_wrong_root"]
+names = ["progress review", "DART workflow review", "DART inflation flavor 5 wrong root issue"]
 
 [[group]]
 key = "software"
