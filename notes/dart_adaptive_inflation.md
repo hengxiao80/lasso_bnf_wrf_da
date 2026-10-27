@@ -4,11 +4,11 @@ Written 2026-10-23 for the run-5 comparison (flavor 2 against flavor 5).
 
 **Sources.**
 - **Code:** DART `7bbd35a09` (`../software/DART/assimilation_code/modules/assimilation/`): `filter_mod.f90`, `assim_tools_mod.f90`, `adaptive_inflate_mod.f90`. Line numbers below refer to these files.
-- **Flavor 5:** El Gharamti (2018), "Enhanced adaptive inflation algorithm for ensemble filters", MWR 146, 623–640 (**G18** below; PDF in `notes/`). Equation numbers "G18 (n)" are the paper's.
-- **Flavor 2:** Anderson (2009), "Spatially and temporally varying adaptive covariance inflation for ensemble filters", Tellus 61A, 72–83 (**A09**; PDF in `notes/`). Equation numbers "A09 (n)" are the paper's. Its predecessor, Anderson (2007a), "An adaptive covariance inflation error correction algorithm for ensemble filters", Tellus 59A, 210–224 (**A07a**, also in `notes/`), has one spatially constant $\lambda$ (flavor 3) and the sd method that A09 reuses. The letters follow A09's reference list; A07b, the hierarchical-filter paper, is cited in `dart_sampling_error_correction.md`.
+- **Flavor 5:** El Gharamti (2018), "Enhanced adaptive inflation algorithm for ensemble filters", MWR 146, 623–640 (**G18** below; PDF in `notes/papers/`). Equation numbers "G18 (n)" are the paper's.
+- **Flavor 2:** Anderson (2009), "Spatially and temporally varying adaptive covariance inflation for ensemble filters", Tellus 61A, 72–83 (**A09**; PDF in `notes/papers/`). Equation numbers "A09 (n)" are the paper's. Its predecessor, Anderson (2007a), "An adaptive covariance inflation error correction algorithm for ensemble filters", Tellus 59A, 210–224 (**A07a**, also in `notes/papers/`), has one spatially constant $\lambda$ (flavor 3) and the sd method that A09 reuses. The letters follow A09's reference list; A07b, the hierarchical-filter paper, is cited in `dart_sampling_error_correction.md`.
 - **Named only:** the EAKF, Anderson (2001), "An ensemble adjustment Kalman filter for data assimilation", MWR 129, 2884–2903 (**A01**); the Gaspari–Cohn localization, Gaspari and Cohn (1999), "Construction of correlation functions in two and three dimensions", QJRMS 125, 723–757, doi:10.1002/qj.49712555417 (**GC99**; its Eq. (4.10)). Both PDFs are in `notes/`.
 - **DART's guide:** `guide/inflation.rst`.
-- **Numbers in Sec. 7–9:** from a line-by-line Python translation of the routines, and from DART's routines copied verbatim into a stand-alone module and compiled with our ifort, in both single and double precision (Sec. 7).
+- **Numbers in Sec. 3, 5, 7 and 8:** from a line-by-line Python translation of the routines (`notes/checks/inflation_checks.py`), and from DART's routines copied verbatim into a stand-alone module and compiled with our ifort, in both single and double precision (`notes/checks/inflation_fortran_check.sh`); commands in Sec. 7.
 
 **Related notes.**
 - `dart_workflow_walkthrough.md` Sec. 2–3 (filter's order of operations, the observation loop).
@@ -398,9 +398,9 @@ Reproduced with DART's own routines compiled stand-alone (Sec. 7), for $\sigma_p
 
 | $d^2/(\sigma_y^2+\sigma_o^2)$ | 4 | 6 | 8 | 9 | 12 |
 |---|---|---|---|---|---|
-| flavor 5, DART | 1.253 | 1.341 | **0.632** | **0.647** | **0.675** |
-| flavor 5, exact mode (grid) | 1.225 | 1.367 | – | 1.579 | 1.792 |
-| flavor 2, DART | 1.321 | 1.406 | 1.453 | 1.469 | 1.501 |
+| flavor 5, DART | 1.2532 | 1.3406 | **0.6315** | **0.6469** | **0.6748** |
+| flavor 5, exact mode (grid) | 1.225 | 1.367 | 1.508 | 1.579 | 1.792 |
+| flavor 2, DART | 1.3211 | 1.4062 | 1.4526 | 1.4685 | 1.5007 |
 
 The outlier check passes $d^2/(\sigma_y^2+\sigma_o^2) \le 9$. At $\bar\lambda = \lambda^0 = 1$, $\gamma = 1$, the wrong root is taken when this ratio exceeds:
 
@@ -513,9 +513,9 @@ The bounds are those of Sec. 4.3.
 
 ## 7. Worked numbers
 
-Two checks were made in the session scratch directory; the scripts are not in the repo.
-- **Python translation:** `inflation_check.py` translates `update_varying_state_space_inflation`, `update_inflation` and `bayes_cov_inflate` with their helpers line by line.
-- **Verbatim Fortran:** `adaptive_inflate_mod.f90:763–1262` copied into a stand-alone module with stubs for `error_handler`, compiled with ifort 19.1.3 at `r8` = float32 and float64.
+Two checks, both in `notes/checks/`:
+- **Python translation:** `inflation_checks.py` translates `update_varying_state_space_inflation`, `update_inflation` and `bayes_cov_inflate` with their helpers line by line, in double precision. Its sections 1–10 give the numbers of Sec. 3.2, 5.2–5.4, 7 and 8 (the section list is at the top of the script). Run, in a few seconds: `uv run --no-project --with numpy python -I notes/checks/inflation_checks.py [n ...]`.
+- **Verbatim Fortran:** `inflation_fortran_check.sh` copies `adaptive_inflate_mod.f90:763–1262` from `../software/DART` into a stand-alone module with stubs for `error_handler` (in a temporary directory; DART's source isn't kept in the repo), compiles it with `inflation_fortran_driver.f90` using ifort 19.1.3 at `r8` = float32 and float64, and runs both: the wrong-root table (Sec. 5.3) and the sd update at small sd (Sec. 5.4). Run: `bash notes/checks/inflation_fortran_check.sh`.
 
 The two agree on every case run in both. Cases use $N = 5$, bounds [1, 5], `inf_sd_max_change` 1.05 and $\lambda^0 = 1$. The two kinds of observation:
 - **"METAR T2":** $\sigma_o = 1.26$ K, prior sd of H(x) 0.5 K.
@@ -538,8 +538,8 @@ $\hat\lambda_o = (d^2-\sigma_o^2)/\sigma_p^2$ is Eq. (3) with a single innovatio
 | case | $\hat\lambda_o$ | flavor 2 $\lambda_u$ | flavor 5 $\lambda_u$ | flavor 5 sd (floor 0.3) |
 |---|---|---|---|---|
 | METAR, $d$ = 1 K | −2.4 | 1.0000 ¹ | 1.0000 ¹ | 0.591 |
-| METAR, $d$ = 2 K | 9.7 | 1.0288 | 1.0111 | 0.620 |
-| METAR, $d$ = 3 K | 29.7 | 1.0931 | 1.0378 | 0.600 ² |
+| METAR, $d$ = 2 K | 9.6 | 1.0288 | 1.0111 | 0.620 |
+| METAR, $d$ = 3 K | 29.6 | 1.0931 | 1.0378 | 0.600 ² |
 | radar sd 2, $d$ = 5 | 0.0 | 1.0000 ¹ | 1.0000 ¹ | 0.597 |
 | radar sd 2, $d$ = 15 | 50 | 1.1564 | 1.0687 | 0.600 ² |
 | radar sd 8, $d$ = 15 | 3.1 | 1.1800 | 1.1174 | 0.609 |
