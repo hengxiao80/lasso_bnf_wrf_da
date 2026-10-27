@@ -61,12 +61,15 @@ Written 2026-10-23 for the run-5 comparison (flavor 2 against flavor 5).
 | $\kappa_{jk}$ | localization (Gaspari–Cohn) × impact-table factor | `final_factor` |
 | $r_{jk}$ | sample correlation of H(x)$_j$ with $x_k$ (current ensembles) | `correl` |
 | $\gamma_{jk}$ | $\kappa_{jk}\,\lvert r_{jk}\rvert$ | `gamma_corr` |
-| $\theta^2(\lambda)$ | variance of $d$ if the inflation were $\lambda$ | `theta_bar_2`, `theta` |
+| $\theta^2(\lambda)$ | variance of $d$ if the inflation were $\lambda$ | `theta_2`, `theta` |
+| $\bar\theta$, $\bar\theta'$ | $\theta$ and $d\theta/d\lambda$ at $\bar\lambda$ | `theta_bar`, `dtheta_dlambda` ¹ |
 | $\bar\lambda$, $\sigma_\lambda$ | inflation mean (mode) and sd **before** one Bayesian update | `lambda_mean`, `lambda_sd` |
 | $\lambda_u$, $\sigma_{\lambda,u}$ | the same **after** it | `new_cov_inflate`, `new_cov_inflate_sd` |
 | $\ell$, $\ell'$ | likelihood and its $\lambda$-derivative at $\bar\lambda$ | `like_bar`, `like_prime` |
 | $q$ | $\ell/\ell'$ | `like_bar/like_prime`, `like_ratio` |
 | $\alpha$, $\beta$ | IG shape and rate | `shape_old/new`, `rate`, `rate_new` |
+
+¹ `deriv_theta` in flavor 5.
 
 ---
 
@@ -76,13 +79,17 @@ The steps that touch $\lambda$, in order. Section 2 of `dart_workflow_walkthroug
 
 1. **Read** $\lambda_k$ and $\sigma_{\lambda,k}$ for every state element from `input_priorinf_mean.nc` and `input_priorinf_sd.nc`. For the first analysis these come from `fill_inflation_restart` (1.0 and 0.6); after that, from the previous cycle's `postassim_priorinf_*`.
 2. **Damp** (`filter_mod.f90:824–827`), the mean only; the sd is not damped:
-$$
-\lambda_k \leftarrow 1 + \rho\,(\lambda_k - 1) \tag{1}
-$$
+
+   $$
+   \lambda_k \leftarrow 1 + \rho\,(\lambda_k - 1) \tag{1}
+   $$
+
 3. **Inflate** every state element, `UPDATE` or `NO_COPY_BACK` (`filter_ensemble_inflate`, `filter_mod.f90:1563–1638` → `inflate_ens`, `adaptive_inflate_mod.f90:555–560`):
-$$
-x_{k,i} \leftarrow \bar x_k + \sqrt{\lambda_k}\,\big(x_{k,i} - \bar x_k\big),\qquad i = 1..N \tag{2}
-$$
+
+   $$
+   x_{k,i} \leftarrow \bar x_k + \sqrt{\lambda_k}\,\big(x_{k,i} - \bar x_k\big),\qquad i = 1..N \tag{2}
+   $$
+
    - The ensemble mean is unchanged, and the sample variance is multiplied by $\lambda_k$.
    - The code writes this as `ens*sqrt(λ) + mean*(1-sqrt(λ))` so that $\lambda = 1$ leaves the values bit-identical.
    - It runs in "probit space", but with no QCEFF table every quantity is `NORMAL_DISTRIBUTION`, and the transform is the identity (`probit_transform_mod.f90:103–105`).
@@ -109,7 +116,7 @@ $$
 The three lines are the damping, the inflation, and one Bayesian update $\mathcal U_j$ per observation.
 
 Consequences:
-- **Unobserved elements.** Where no observation reaches $k$ (outside every localization radius, impact 0, or no spread so that $r = 0$), $\lambda$ is only damped. Its excess $\lambda - 1$ decays as $\rho^n$: an e-folding time of $-1/\ln\rho = 9.5$ cycles = 2.4 h for $\rho = 0.9$ at 15 min.
+- **Unobserved elements.** Where no observation reaches $k$ (outside every localization radius, impact 0, or no spread so that $r = 0$), $\lambda$ is only damped. Its excess $\lambda - 1$ decays as $\rho^n$: an e-folding time of $-1/\ln\rho \approx 9.5$ cycles $\approx 2.4$ h for $\rho = 0.9$ at 15 min.
 - **Damped prior.** This cycle's Bayesian updates start from the **damped** $\lambda$, and the sd carries over undamped.
 - **Damping is the only model of how $\lambda$ evolves between cycles.** A09 took the prior at one time to be the posterior at the previous one, and named damping toward 1 as the simplest fix for inflation left behind where observations disappear (A09 Sec. 5). G18 lists the missing forecast model for the inflation among its limitations.
 - **Every observation is evidence against the original prior.** Each one is compared with the prior as it was before any observation of the cycle ($\bar y_j$, $\sigma^2_{y,j}$ frozen in step 5), so each innovation counts as independent evidence about $\lambda$, even though the state itself is updated sequentially.
@@ -161,9 +168,38 @@ $$
 - **The posterior-inflation branch** (`inflate_only`, `:740–745`) also removes the observation's own impact; prior inflation doesn't use it.
 - **$\lambda^0_k$ stands in for the forward operator's whole support.** It is the applied $\lambda$ of the element being updated, whereas $\sigma_y^2$ actually depends on the $\lambda$ of all state elements the forward operator touches.
 
-### 3.4 The likelihood
+### 3.4 The likelihood (A07a (5.6)–(5.8); A09 (7)–(11))
 
-$d \sim N(0, \theta^2(\lambda))$:
+For one observation, the inflation sees one number: the innovation $d = y_o - \bar y$. The likelihood of $\lambda$ is the pdf of $d$ if the inflation were $\lambda$, read as a function of $\lambda$ at the observed $d$. A07a derives it for one global $\lambda$ ($\gamma = 1$), A09 for $\lambda_k$ with $\gamma \le 1$.
+
+**Step 1: split $d$ into errors.** With $x_t$ the truth, $\epsilon_o$ the observation error and $\epsilon_b$ the error of the prior mean in observation space (signs as in Sec. 3.1):
+
+$$
+\begin{aligned}
+y_o &= H(x_t) + \epsilon_o,\\
+\bar y &= H(x_t) - \epsilon_b,\\
+d &= y_o - \bar y = \epsilon_o + \epsilon_b .
+\end{aligned} \notag
+$$
+
+**Step 2: the assumptions.**
+- **(a)** $\epsilon_o \sim N(0, \sigma_o^2)$, and the $\sigma_o^2$ given to filter is right.
+- **(b)** $\epsilon_b \sim N(0, \sigma_b^2)$: the prior mean is unbiased and its error Gaussian.
+- **(c)** $\epsilon_o$ and $\epsilon_b$ are independent.
+- **(d) This is where $\lambda$ comes in.** If $\lambda$ is the right inflation for element $k$, then the observation's prior variance becomes right when multiplied by $s(\lambda)^2$ of Eq. (4): $\sigma_b^2 = s(\lambda)^2\,\sigma_p^2$. For $\gamma = 1$ this is $\sigma_b^2 = \lambda\,\sigma_p^2$ (A07a (5.7)); A09 (8)–(10) add $\gamma$.
+- **(e)** $\bar y$ and $\sigma_p^2$ are known numbers: the likelihood conditions on the prior ensemble, and only the truth and the observation error are random. With 5 members neither number is accurate: $\sigma_p^2$ is a sample variance with 4 degrees of freedom, and $\bar y$ a 5-member average.
+
+**Step 3: mean and variance of $d$.** By (a) and (b) the means are zero; by (c) the covariance term vanishes; (d) gives $\sigma_b^2$:
+
+$$
+\begin{aligned}
+E(d) &= E(\epsilon_o) + E(\epsilon_b) = 0,\\
+\operatorname{Var}(d) &= \sigma_o^2 + \sigma_b^2 + 2\operatorname{Cov}(\epsilon_o, \epsilon_b)\\
+&= s(\lambda)^2\,\sigma_p^2 + \sigma_o^2 \;\equiv\; \theta^2(\lambda) .
+\end{aligned} \notag
+$$
+
+**Step 4: the density.** A sum of independent Gaussians is Gaussian, so $d \sim N(0, \theta^2(\lambda))$, and its density at the observed $d$ is the likelihood:
 
 $$
 L(\lambda) = p(d\mid\lambda) = \frac{1}{\sqrt{2\pi}\,\theta(\lambda)}\exp\!\Big(-\frac{d^2}{2\theta^2(\lambda)}\Big),\tag{6}
@@ -177,16 +213,32 @@ $$
 \text{flavor 5:}\quad \theta^2(\lambda) = \Big(s(\lambda)^2 - \frac{1}{N}\Big)\sigma_p^2 + \sigma_o^2 . \tag{8}
 $$
 
-These are A09 (8), (11) and G18 (26). In (8) the code drops the $1/N$ term when $s^2 < 1/N$. In the code: `compute_new_density` and `linear_bayes` for flavor 2, and `enh_compute_new_density` and `enh_linear_bayes` for flavor 5 (`:1028–1032`, `:1135–1140`).
+- **Where these come from:** (7) is Step 3's variance: A09 (8) with (10), and A09 (11) is (6). (8) is G18 (26); it changes assumption (d) (Sec. 5.1). In (8) the code drops the $1/N$ term when $s^2 < 1/N$.
+- **In the code:** `compute_new_density` (`:995–1003` evaluates (6) with (7), times the Gaussian prior) and `linear_bayes` for flavor 2; `enh_compute_new_density` and `enh_linear_bayes` for flavor 5 (`:1028–1032`, `:1135–1140`).
+- **Sign:** A09 writes $D = \lvert\bar y - y_o\rvert$. Only $d^2$ enters, so the sign of the innovation doesn't matter.
+- **A09's wording is loose:** it calls $\theta$ "the expected value of the distance" between $\bar y$ and $y_o$, but $\theta$ is the rms of $d$, the sd of its normal. The expected distance is $E\lvert d\rvert = \theta\sqrt{2/\pi} \approx 0.8\,\theta$. A09 also writes "Normal (0, θ)" with $\theta$ as the sd.
 
-Two properties:
+**The shape of $L$ in $\lambda$.** $\lambda$ enters only through $\theta^2$:
+
+$$
+\begin{aligned}
+\ln L &= -\tfrac12\ln(2\pi) - \tfrac12\ln\theta^2 - \frac{d^2}{2\theta^2},\\
+\frac{\partial\ln L}{\partial\theta^2} &= \frac{d^2 - \theta^2}{2\,\theta^4} .
+\end{aligned} \notag
+$$
+
+- **Maximum at $\theta^2 = d^2$.** For $\gamma = 1$ that is $\hat\lambda = (d^2 - \sigma_o^2)/\sigma_p^2$, Eq. (3) with the single $d^2$ in place of $E(d^2)$. So (6) is the likelihood whose one-observation maximum is Eq. (3). If $d^2 < \sigma_o^2$, no $\lambda$ reaches $\theta^2 = d^2$, and $L$ is largest at the smallest $\lambda$ allowed.
+- **Two factors pull against each other.** The exponential rises with $\theta$ toward 1; the prefactor $1/\theta$ falls. Without the prefactor, $L$ would rise with $\lambda$ for ever.
+- **A long right tail.** For large $\lambda$, $\theta^2 \approx \gamma^2\lambda\,\sigma_p^2$, so $L$ falls only as $\lambda^{-1/2}$, and $\int L\,d\lambda$ diverges. The prior is what keeps the posterior's right tail finite.
+
+Further properties:
 
 - **Same QC denominator.** By Eq. (5), $\theta^2(\lambda^0) = \sigma_y^2 + \sigma_o^2$ in flavor 2 for every element, whatever $\gamma$. This is the denominator of the outlier check. With `outlier_threshold = 3`, every assimilated observation therefore has $d^2 \le 9\,\theta^2(\lambda^0)$ at the start of the cycle's updates.
 - **$L$ is not Gaussian in $\lambda$.** That is why both flavors linearize it.
 
 ### 3.5 Linearizing the likelihood around $\bar\lambda$
 
-With $\theta' = d\theta/d\lambda$ (the $-\sigma_p^2/N$ term is a constant, so $\theta'$ is the same for both flavors):
+With $\theta' = d\theta/d\lambda = (d\theta^2/d\lambda)/(2\theta)$. The $-\sigma_p^2/N$ term of (8) is a constant, so $d\theta^2/d\lambda$ is the same in both flavors, and so is the formula for $\theta'$; each flavor puts in its own $\theta$, from (7) or (8):
 
 $$
 \begin{aligned}
@@ -195,7 +247,13 @@ $$
 \end{aligned} \tag{9}
 $$
 
-This is A09 (A.3), (A.6), and in the code `dtheta_dlambda` (`:1092`) and `deriv_theta` (`:1154`). DART writes
+This is A09 (A.3), (A.6), and in the code `dtheta_dlambda` (`:1092`) and `deriv_theta` (`:1154`).
+
+A bar marks a value at $\bar\lambda$, the inflation before this one update (Sec. 1):
+- $\bar\theta = \theta(\bar\lambda)$, from (7) in flavor 2 and (8) in flavor 5: the sd of $d$ that the current inflation predicts. In the code `theta_bar`, with `theta_bar_2` $= \bar\theta^2$ (`:1071–1072`, `:1140–1141`).
+- $\bar\theta' = \theta'(\bar\lambda)$, Eq. (9) at $\bar\lambda$: how fast that sd grows with $\lambda$. In the code `dtheta_dlambda` and `deriv_theta`.
+
+DART writes
 
 $$
 \begin{aligned}
@@ -221,12 +279,22 @@ $$
 p(\lambda\mid d) \;\propto\; \exp\!\Big(-\frac{(\lambda-\bar\lambda)^2}{2\sigma_\lambda^2}\Big)\big[\ell + \ell'(\lambda-\bar\lambda)\big]. \tag{11}
 $$
 
-Set the derivative to zero, multiply by $-\sigma_\lambda^2/\ell'$, and write $\delta = \lambda - \bar\lambda$:
+The new $\lambda$ is the mode of this posterior, where its $\lambda$-derivative is zero. The right side of (11) is enough, since the normalizing constant doesn't move the mode. With $\delta = \lambda - \bar\lambda$, the product rule gives
 
 $$
--\frac{\delta}{\sigma_\lambda^2}\big(\ell+\ell'\delta\big) + \ell' = 0
-\;\;\Longrightarrow\;\;
-\delta^2 + q\,\delta - \sigma_\lambda^2 = 0 . \tag{12}
+\begin{aligned}
+&\frac{d}{d\lambda}\Big[e^{-\delta^2/2\sigma_\lambda^2}\big(\ell+\ell'\delta\big)\Big]\\
+&\quad= e^{-\delta^2/2\sigma_\lambda^2}\Big[-\frac{\delta}{\sigma_\lambda^2}\big(\ell+\ell'\delta\big) + \ell'\Big] = 0 .
+\end{aligned} \notag
+$$
+
+The exponential is positive, so the bracket is zero. Multiply the bracket by $-\sigma_\lambda^2/\ell'$ and use $q = \ell/\ell'$:
+
+$$
+\begin{aligned}
+&\delta\,(q + \delta) - \sigma_\lambda^2 = 0\\
+\Longleftrightarrow\quad &\delta^2 + q\,\delta - \sigma_\lambda^2 = 0 .
+\end{aligned} \tag{12}
 $$
 
 In $\lambda$ this is A09 (A.8) and the code's quadratic (`:1102–1104`):
@@ -294,19 +362,62 @@ The pipeline (Sec. 2, 3.2, 3.3, 4.3) is the same. Three things change: the likel
 
 ### 5.1 The $-1/N$ term (G18 (16)–(26))
 
-G18 builds the innovation statistics from the **member** innovations $d_i = y - x_i = \epsilon_o + \epsilon_b - \tilde x_i$, where $\tilde x_i$ is the perturbation of member $i$. The perturbations sum to zero, so averaging over members gives
+G18 builds the innovation statistics from the **member** innovations, not only from the mean innovation $d$. Like G18, take the observed variable to be a state variable ($H$ = identity), and write each member as the mean plus a perturbation:
+
+$$
+\begin{gathered}
+y = x_t + \epsilon_o,\qquad \epsilon_b = x_t - \bar x,\\
+x_i = \bar x + \tilde x_i,\qquad \sum_i \tilde x_i = 0,\\
+\hat\sigma_b^2 = \frac{1}{N-1}\sum_i \tilde x_i^2 .
+\end{gathered} \notag
+$$
+
+$\hat\sigma_b^2$ is the sample variance ($\sigma_p^2$ of Sec. 3), and $d = y - \bar x = \epsilon_o + \epsilon_b$ as in Sec. 3.4.
+
+**Step 1: member innovations** (G18 (16)–(18)):
+
+$$
+\begin{aligned}
+d_i = y - x_i &= \epsilon_o + x_t - (\bar x + \tilde x_i)\\
+&= \epsilon_o + \epsilon_b - \tilde x_i \;=\; d - \tilde x_i .
+\end{aligned} \notag
+$$
+
+**Step 2: square** (G18 (19)):
+
+$$
+\begin{aligned}
+d_i^2 &= \epsilon_o^2 + \epsilon_b^2 + 2\epsilon_o\epsilon_b\\
+&\quad + \tilde x_i^2 - 2(\epsilon_o + \epsilon_b)\,\tilde x_i .
+\end{aligned} \notag
+$$
+
+**Step 3: average over the members** (G18 (20)–(22)). $\epsilon_o$ and $\epsilon_b$ are the same for every member, so they come out of the sums. The perturbations sum to zero, so the term linear in $\tilde x_i$ drops out, and $\frac1N\sum_i\tilde x_i^2 = \frac{N-1}{N}\hat\sigma_b^2$. This gives, exactly, G18 (22):
 
 $$
 \frac1N\sum_i d_i^2 = \epsilon_o^2 + \epsilon_b^2 + \frac{N-1}{N}\hat\sigma_b^2 + 2\epsilon_o\epsilon_b . \notag
 $$
 
-G18 approximates the left side by $E(d^2) + \hat\sigma_b^2$. Its footnote 2 says this drops a factor $N/(N-1)$ and calls it a "biased assumption", valid for large $N$. Taking expectations with $\sigma_b^2 = \lambda_o^*\hat\sigma_b^2$ gives
+**Step 4: G18's approximation** (footnote 2; G18 (23)–(25)). G18 replaces the left side by $E(d^2) + \hat\sigma_b^2$, takes expectations on the right ($E(\epsilon_o^2) = \sigma_o^2$, $E(\epsilon_b^2) = \sigma_b^2$, $E(\epsilon_o\epsilon_b) = 0$), and sets $\sigma_b^2 = \lambda_o^*\hat\sigma_b^2$:
 
 $$
-\lambda_o^* = \frac{E(d^2)-\sigma_o^2}{\hat\sigma_b^2} + \frac1N = \lambda_o + \frac1N , \notag
+\begin{aligned}
+E(d^2) + \hat\sigma_b^2 &= \sigma_o^2 + \lambda_o^*\hat\sigma_b^2 + \frac{N-1}{N}\hat\sigma_b^2\\
+\Longrightarrow\quad \lambda_o^* &= \frac{E(d^2)-\sigma_o^2}{\hat\sigma_b^2} + \frac1N = \lambda_o + \frac1N ,
+\end{aligned} \notag
 $$
 
 which is G18 (25) and leads to Eq. (8).
+
+**The $1/N$ comes only from that approximation.** By Step 1, $d_i = d - \tilde x_i$, so the same averaging gives the left side exactly:
+
+$$
+\frac1N\sum_i d_i^2 = d^2 + \frac{N-1}{N}\hat\sigma_b^2 . \notag
+$$
+
+- **Without the approximation:** the $\frac{N-1}{N}\hat\sigma_b^2$ terms cancel on the two sides, and the expectation gives back $E(d^2) = \sigma_o^2 + \sigma_b^2$, Eq. (3), with no $1/N$.
+- **What footnote 2 does:** it writes the left side as $d^2 + V(d)$, with $V(d)$ the sample variance of the $d_i$, which is $\hat\sigma_b^2$ (denominator $N-1$). The exact value has $\frac{N-1}{N}V(d)$. The footnote calls this omitting the factor $N/(N-1)$, a "biased assumption" that is valid for large $N$.
+- **So:** the difference, $\hat\sigma_b^2/N$, is exactly the $1/N$ of (25). The member innovations carry no information beyond $d$ and $\hat\sigma_b^2$. The $1/N$ term is not required by the innovation statistics; G18 keeps it for its effect, fewer negative and deflating estimates (G18 Sec. 3a and 5).
 
 **What it does:** with the same evidence, the likelihood peaks where $s(\lambda)^2 = (d^2-\sigma_o^2)/\sigma_p^2 + 1/N$. **For $\gamma = 1$ the target variance factor is higher by $1/N$**: 0.2 at 5 members, 0.02 at 50. G18 adds that the shift "does not always yield larger posterior inflation values" (Sec. 5) and that it reduces, but doesn't remove, negative and deflating estimates.
 
@@ -320,16 +431,43 @@ p(\lambda) = \frac{\beta^\alpha}{\Gamma(\alpha)}\,\lambda^{-\alpha-1}e^{-\beta/\
 \end{gathered} \tag{16}
 $$
 
-DART keeps the files Gaussian-looking: it stores $\lambda$ = **mode** and $\sigma_\lambda$ = sd. At every single update it converts them to ($\alpha$, $\beta$), updates, and converts back. So the two flavors' files are interchangeable. The conversion matches the mode (G18 (28)) and the variance (G18 (29)). With $m \equiv \alpha + 1 = \beta/\bar\lambda$:
+DART keeps the files Gaussian-looking: it stores $\lambda$ = **mode** and $\sigma_\lambda$ = sd. At every single update it converts them to ($\alpha$, $\beta$), updates, and converts back. So the two flavors' files are interchangeable.
+
+**This is a conversion, not a Bayesian step.** No observation enters. Eq. (17) only finds the IG with the same mode and the same variance as the stored pair ($\bar\lambda$, $\sigma_\lambda$). The posterior mode, with the IG as prior, comes afterwards (Sec. 5.3, Eq. (18)).
+
+**Step 1: match the mode** (G18 (28)). With $m \equiv \alpha + 1$:
+
+$$
+\begin{gathered}
+\frac{\beta}{\alpha+1} = \bar\lambda \quad\Longrightarrow\quad \beta = \bar\lambda\,m,\\
+\alpha - 1 = m - 2,\qquad \alpha - 2 = m - 3 .
+\end{gathered} \notag
+$$
+
+**Step 2: match the variance** (G18 (29)–(30)), and put in Step 1:
+
+$$
+\sigma_\lambda^2 = \frac{\beta^2}{(\alpha-1)^2(\alpha-2)} = \frac{\bar\lambda^2 m^2}{(m-2)^2(m-3)} . \notag
+$$
+
+**Step 3: clear the denominator,** expand $(m-2)^2(m-3) = m^3 - 7m^2 + 16m - 12$, and divide by $\sigma_\lambda^2$:
 
 $$
 \begin{aligned}
 &\sigma_\lambda^2\,(m-2)^2(m-3) = \bar\lambda^2 m^2\\
-\Longleftrightarrow\quad &m^3 - \Big(7 + \frac{\bar\lambda^2}{\sigma_\lambda^2}\Big)m^2 + 16\,m - 12 = 0 ,
+\Longleftrightarrow\quad &m^3 - \Big(7 + \frac{\bar\lambda^2}{\sigma_\lambda^2}\Big)m^2 + 16\,m - 12 = 0 .
 \end{aligned} \tag{17}
 $$
 
-using $(\alpha-1)^2(\alpha-2) = (m-2)^2(m-3) = m^3 - 7m^2 + 16m - 12$. The cubic has one real root. `change_GA_IG` (`:1229–1262`, G18 (33)–(35)) evaluates it in closed form (Cardano), with $v = \sigma_\lambda^2$ and $\mu = \bar\lambda$:
+**G18 (31) has a misprint.** G18 writes the cubic in $\beta$. Putting $m = \beta/\bar\lambda$ into (17) gives
+
+$$
+\frac{\beta^3}{\bar\lambda^3} - \Big(\frac{7}{\bar\lambda^2} + \frac{1}{\sigma_\lambda^2}\Big)\beta^2 + \frac{16}{\bar\lambda}\,\beta - 12 = 0 , \notag
+$$
+
+but G18 (31) prints $7/\bar\lambda$ for $7/\bar\lambda^2$. The two agree only at $\bar\lambda = 1$. The code isn't affected: `change_GA_IG` solves the correct cubic (below).
+
+The cubic has one real root (G18 (32): its discriminant is negative). `change_GA_IG` (`:1229–1262`, G18 (33)–(35)) evaluates it in closed form (Cardano), with $v = \sigma_\lambda^2$ and $\mu = \bar\lambda$:
 
 $$
 \begin{aligned}
@@ -340,7 +478,7 @@ E &= \frac{21v\mu^7 + 75v^2\mu^5 + v^3\mu^3 + \mu^9 + 6\sqrt3\,A\,v^3}{v^3},\\
 \end{aligned} \notag
 $$
 
-Checked numerically: the root satisfies (17) to $10^{-13}$, and the IG has the requested mode and variance. In the table, $\tau^2 = \bar\lambda^2/(\alpha+1)$ is the IG's curvature variance (Sec. 5.3).
+Checked numerically (`inflation_checks.py` section 1) for every row of the table below, including $\bar\lambda$ = 1.5 and 2: the root satisfies (17) to rounding error (residuals $\le 10^{-11}$ against terms up to $10^6$), and the IG has the requested mode and variance. In the table, $\tau^2 = \bar\lambda^2/(\alpha+1)$ is the IG's curvature variance (Sec. 5.3).
 
 | $\bar\lambda$ | $\sigma_\lambda$ | $\alpha$ | $\beta$ | IG mean | $\tau^2$ | $\tau^2/\sigma_\lambda^2$ |
 |---|---|---|---|---|---|---|
@@ -360,19 +498,46 @@ $$
 p(\lambda\mid d)\propto \lambda^{-\alpha-1}e^{-\beta/\lambda}\,\big[\ell+\ell'(\lambda-\bar\lambda)\big]. \notag
 $$
 
-Its log-derivative is zero where
+The new $\lambda$ is the mode of this posterior. It is easier to find from the logarithm: the log turns the product into a sum, and since the log only increases, $p$ and $\ln p$ peak at the same $\lambda$. So the mode is where the **log-derivative**, the derivative of $\ln p$ (not the log of the derivative), is zero. As in Sec. 4.1, write $\delta = \lambda - \bar\lambda$ and $q = \ell/\ell'$.
+
+**Step 1: take the log.** With $C$ a constant (the normalization):
+
+$$
+\begin{aligned}
+\ln p(\lambda\mid d) &= -(\alpha+1)\ln\lambda - \frac{\beta}{\lambda}\\
+&\quad + \ln\big[\ell+\ell'(\lambda-\bar\lambda)\big] + C .
+\end{aligned} \notag
+$$
+
+**Step 2: differentiate and set to zero.** The three terms give $-(\alpha+1)/\lambda$, $\beta/\lambda^2$ and $\ell'/(\ell+\ell'\delta)$:
 
 $$
 \frac{-(\alpha+1)\lambda+\beta}{\lambda^2} + \frac{\ell'}{\ell+\ell'(\lambda-\bar\lambda)} = 0 . \notag
 $$
 
-Multiply by $\lambda^2\big(\ell+\ell'(\lambda-\bar\lambda)\big)/\ell'$ and use $\alpha+1 = \beta/\bar\lambda$:
+This holds only where $\ell + \ell'\delta > 0$: the log of the linearized likelihood exists only there.
+
+**Step 3: clear the denominators.** Multiply by $\lambda^2\,(\ell+\ell'\delta)/\ell'$:
+
+$$
+\big[\beta - (\alpha+1)\lambda\big]\,(q + \delta) + \lambda^2 = 0 . \notag
+$$
+
+This step also admits a root where $\ell + \ell'\delta < 0$, outside Step 2's domain. That is the spurious root ("The root choice can be wrong", below).
+
+**Step 4: use the prior's mode,** $\alpha + 1 = \beta/\bar\lambda$ (Sec. 5.2, Step 1). Then $\beta - (\alpha+1)\lambda = -(\beta/\bar\lambda)\,\delta$, and multiplying by $-\bar\lambda/\beta$ gives
+
+$$
+\delta\,(q + \delta) - \frac{\bar\lambda}{\beta}\,\lambda^2 = 0 . \notag
+$$
+
+**Step 5: collect powers of $\lambda$** (put in $\delta = \lambda - \bar\lambda$):
 
 $$
 \Big(1-\frac{\bar\lambda}{\beta}\Big)\lambda^2 + (q-2\bar\lambda)\,\lambda + \big(\bar\lambda^2 - q\,\bar\lambda\big) = 0 , \tag{18}
 $$
 
-which is G18 (38) and the code's `a, b, c` (`:1169–1171`). In terms of $\delta = \lambda-\bar\lambda$ it reads
+which is G18 (38) and the code's `a, b, c` (`:1169–1171`). Since $\bar\lambda/\beta = 1/(\alpha+1)$, Step 4's equation also reads
 
 $$
 \delta^2 + q\,\delta - \frac{\lambda^2}{\alpha+1} = 0 . \tag{19}
@@ -600,6 +765,7 @@ The sd after $n$ observations (with the floor at 0.6 it stays 0.600 in both flav
 4. **A09's $\gamma$ uses the signed correlation** (A09 (9)–(10)). The code uses $\lvert r\rvert$ (`:729`), as G18 does.
 5. **A09's sd method may raise the sd** ("biased to produce slightly larger values", Sec. 4.2). The code keeps the old sd instead (`:896–901`).
 6. **"By construction, does not require enforcing the inflation to be nonnegative"** (G18 Sec. 3d). The IG prior is positive, but the linearized quadratic (18) can still give a negative root, guarded at `:1188–1189`, or a wrong one (Sec. 5.3).
+7. **G18 (31), the cubic for $\beta$,** prints $7/\bar\lambda$ where it should be $7/\bar\lambda^2$ (Sec. 5.2). The code's closed form (G18 (33)–(35)) solves the correct cubic.
 
 ---
 
