@@ -1,4 +1,4 @@
-# Hand-off: "learn: flavor-5 wrong root": the wrong root in DART's flavor-5 inflation update
+# Hand-off: "flavor5_wrong_root": the wrong root in DART's flavor-5 inflation update
 
 Written 2026-10-27 during session "learn: inflation Q&A", which goes on with the Q&A on `notes/dart_adaptive_inflation.md` (this is a branch off it). No jobs running.
 
@@ -46,7 +46,7 @@ Repo: `/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da` (WRF-DART for L
 
 ## Rules for this session
 
-- **Two sessions share the inflation note.** The Q&A session keeps editing `notes/dart_adaptive_inflation.md`. Put this work in Sec. 5.3 (and Sec. 8) only, or in a separate note with a pointer from Sec. 5.3; tell the user before larger edits. Commit only this session's own files and hunks.
+- **Two sessions share the inflation note.** The Q&A session keeps editing `notes/dart_adaptive_inflation.md`. **Write this work up in a separate note** (the user's choice, 2026-10-27; e.g. `notes/dart_flavor5_wrong_root.md`). In the inflation note, change only a short pointer in Sec. 5.3 (and Sec. 8 item 6 if needed). Commit only this session's own files and hunks.
 - **Patches and builds:** a DART change goes in `patches/` with a README entry; rebuilding filter changes the software outside the repo (`software_lock.json`). Ask first.
 - **Outward-facing steps** (a GitHub issue or PR upstream): only with the user's go-ahead.
 - **Jobs:** none without the user's go-ahead.
@@ -56,4 +56,4 @@ Repo: `/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da` (WRF-DART for L
 
 ## Starting the session
 
-Name it `learn: flavor-5 wrong root` (it files into the `learn` group), and name this file in the first prompt (`notes/handoffs/2026-10-27_learn_flavor5_wrong_root.md`).
+Name it `flavor5_wrong_root` (the `review` group claims that name, `.claude-sessions.toml`), and name this file in the first prompt (`notes/handoffs/2026-10-27_flavor5_wrong_root.md`).
