@@ -581,6 +581,8 @@ So it needs $\sigma_\lambda$ near 0.6 (our first cycles; it is the initial sd) a
 
 This is not reported upstream.
 
+**Worked out in `dart_flavor5_wrong_root.md`** (2026-10-27): the right root is always the one on the side of $\bar\lambda$ that $q$ points to (the larger if $\ell' > 0$, the smaller if $\ell' < 0$); flavor 2's closest root always is that one, flavor 5's not for $0 < q < 2\bar\lambda^2/\beta$. It also has where the wrong root can pass the outlier check, and a patch (`patches/dart_7bbd35a09_flavor5_root_choice.patch`).
+
 ### 5.4 The new sd (G18 (39)–(43); `bayes_cov_inflate`, `:905–966`)
 
 Assume the posterior is IG($\alpha_u$, $\beta_u$) with mode $\lambda_u$, so $\alpha_u + 1 = \beta_u/\lambda_u$. The code evaluates the exact unnormalized posterior $p(\lambda) \propto \lambda^{-\alpha-1}e^{-\beta/\lambda}L(\lambda)$ (`enh_compute_new_density`, `:1011–1054`) at $\xi_1 = \lambda_u + \sigma_\lambda$ and $\xi_2 = \lambda_u$. For an IG, the normalizing constants cancel:
@@ -764,7 +766,7 @@ The sd after $n$ observations (with the floor at 0.6 it stays 0.600 in both flav
 3. **Flavor 5's sd evolves only with `inf_sd_lower_bound` below the current sd.** The guide says so only under `inf_sd_max_change`.
 4. **A09's $\gamma$ uses the signed correlation** (A09 (9)–(10)). The code uses $\lvert r\rvert$ (`:729`), as G18 does.
 5. **A09's sd method may raise the sd** ("biased to produce slightly larger values", Sec. 4.2). The code keeps the old sd instead (`:896–901`).
-6. **"By construction, does not require enforcing the inflation to be nonnegative"** (G18 Sec. 3d). The IG prior is positive, but the linearized quadratic (18) can still give a negative root, guarded at `:1188–1189`, or a wrong one (Sec. 5.3).
+6. **"By construction, does not require enforcing the inflation to be nonnegative"** (G18 Sec. 3d). The IG prior is positive, but the linearized quadratic (18) can still give a negative root, guarded at `:1188–1189`, or a wrong one (Sec. 5.3). With the right root it is always positive (`dart_flavor5_wrong_root.md` Sec. 2.3).
 7. **G18 (31), the cubic for $\beta$,** prints $7/\bar\lambda$ where it should be $7/\bar\lambda^2$ (Sec. 5.2). The code's closed form (G18 (33)–(35)) solves the correct cubic.
 
 ---

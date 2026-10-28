@@ -1,0 +1,32 @@
+--- a/assimilation_code/modules/assimilation/adaptive_inflate_mod.f90
++++ b/assimilation_code/modules/assimilation/adaptive_inflate_mod.f90
+@@ -1173,11 +1173,16 @@
+ ! Use nice scaled quadratic solver to avoid precision issues
+ call solve_quadratic(a, b, c, plus_root, minus_root)
+ 
+-! Do a check to pick closest root
+-if(abs(minus_root - lambda_mean) < abs(plus_root - lambda_mean)) then
+-   new_cov_inflate = minus_root
++! Local patch: pick the root on the side of lambda_mean that the likelihood's
++! slope points to, the larger root if like_prime > 0 and the smaller one if
++! like_prime < 0. The two roots always lie on either side of lambda_mean, and the
++! other one lies where the linearized likelihood, like_bar + like_prime *
++! (lambda - lambda_mean), is negative. The root closest to lambda_mean (as in
++! linear_bayes) is that wrong one when 0 < like_ratio < 2 * lambda_mean**2 / beta.
++if(like_ratio > 0.0_r8) then
++   new_cov_inflate = max(plus_root, minus_root)
+ else
+-   new_cov_inflate = plus_root
++   new_cov_inflate = min(plus_root, minus_root)
+ endif
+ 
+ ! Do a final check on the sign of the updated factor
+@@ -1185,6 +1190,8 @@
+ ! From the selection process above it can be negative
+ ! if the positive root is far away from it. 
+ ! As such, keep the current factor value
++! (Local patch: with the root chosen above it is positive in exact arithmetic;
++! the check stays as a guard against NaN and round-off.)
+ if(new_cov_inflate <= 0.0_r8 .OR. new_cov_inflate /= new_cov_inflate) &
+    new_cov_inflate = lambda_mean
+ 
