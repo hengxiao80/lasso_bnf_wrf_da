@@ -66,7 +66,13 @@ The interactive set in `~/.bashrc` (`intel/20.0.4 openmpi/4.1.4 netcdf-fortran/4
 - `scripts/env_wrf.sh` loads `Core/A100` right after `module purge`. Every Slurm script of the repo sources this file, so they all pick it up.
 - `CLAUDE.md` has a gotcha that points here.
 
-Checked after the change, on the login node in a fresh login shell with `source scripts/env_wrf.sh`: it loads `Core/A100 intel/20.0.4 openmpi/4.0.4 netcdf-wrf/0.1 hdf5/1.10.7 jasper/2.0.32`, `mpif90` is the intel-20.0.4 openmpi 4.0.4, and `ldd` finds every library of `wrf.exe`, `real.exe`, `metgrid.exe` and `filter`, none from a gcc-8.3.1 build. Not yet checked on a compute node.
+Checked after the change, on the login node in a fresh login shell with `source scripts/env_wrf.sh`: it loads `Core/A100 intel/20.0.4 openmpi/4.0.4 netcdf-wrf/0.1 hdf5/1.10.7 jasper/2.0.32`, `mpif90` is the intel-20.0.4 openmpi 4.0.4, and `ldd` finds every library of `wrf.exe`, `real.exe`, `metgrid.exe` and `filter`, none from a gcc-8.3.1 build.
+
+Compute nodes (test job 1183519 on `batch_all`, `cirrus[1-2]`, 2026-10-30) behave the same:
+- **System setup:** the same `olcf-env.sh`, a fresh login loads `Core/A100` through `DefApps`, and all three `Core` modules are available.
+- **`env_wrf.sh`:** in a plain `#!/bin/bash` job shell, as the job scripts use, it loads the same modules as on the login node.
+- **Libraries:** `ldd` finds every library of `wrf.exe`, `real.exe`, `ungrib.exe`, `metgrid.exe` and `filter`. The only gcc-8.3.1 libraries are `ungrib.exe`'s `libjasper` and `libjpeg`, the gcc jasper build it has always used.
+- **MPI:** a small MPI and OpenMP program built with `mpif90` ran as 32 ranks × 8 threads on the 2 nodes with the `wrf.exe` UCX settings, and its allreduce gave the expected sum.
 
 ## 6. If it changes again
 
