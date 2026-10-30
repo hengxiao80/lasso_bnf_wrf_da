@@ -118,7 +118,7 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 
 ## Environment and conventions
 
-- Builds and runs need `source scripts/env_wrf.sh` (intel/20.0.4 = ifort 19.1.3, openmpi/4.0.4,
+- Builds and runs need `source scripts/env_wrf.sh` (Core/A100, intel/20.0.4 = ifort 19.1.3, openmpi/4.0.4,
   netcdf-wrf/0.1, hdf5, jasper). This is a dm+sm build (MPI ranks x OpenMP threads).
 - Python is managed by `uv` (3.11, `uv run ...`). The system `python3` is 3.6 and too old. In Slurm
   jobs call `.venv/bin/python` directly, since compute nodes have no internet. `UV_CACHE_DIR` is on
@@ -133,6 +133,12 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 
 ## Gotchas learned the hard way
 
+- **Cirrus modules need a `Core` module first** (new Lmod setup since 2026-10-30, added with the H200 GPU nodes):
+  after `module purge` only `Core/A100`, `Core/H200` and `Core/26.10` can be loaded. `env_wrf.sh` loads
+  `Core/A100`, the old CPU stack the builds used (the name says nothing about GPUs; the project uses none). Not
+  `Core/26.10`: its paths have Lmod priorities that keep them ahead of the `intel/20.0.4` directory, so
+  `openmpi/4.0.4` and `hdf5` resolve to their gcc-8.3.1 builds and `wrf.exe` misses `libhdf5hl_fortran.so.100`.
+  OLCF has not documented the change yet. Details and checks: `notes/cirrus_modules_core.md`.
 - The user's shell aliases `ls` with `-F`, so `ls` output has `@`/`*` suffixes. Use `find` or
   `command ls` in scripts. This once created dozens of broken symlinks.
 - Claude Code replays a shell snapshot taken at session start, so `~/.bashrc` edits do not apply

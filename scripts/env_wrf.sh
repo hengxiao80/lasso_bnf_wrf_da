@@ -4,6 +4,10 @@
 # /gpfs/wolf2/arm/cli120/proj-shared/sey/bnf/wrf/code/wrf480 (modules2load),
 # so our independent build matches its toolchain exactly.
 module purge
+# Since 2026-10-30 nothing else loads without a Core module. Core/A100 is the
+# old (CPU) stack the builds used; Core/26.10 would resolve openmpi/4.0.4 and
+# hdf5 to their gcc builds, and wrf.exe then misses libhdf5hl_fortran.
+module load Core/A100
 module load intel/20.0.4
 module load openmpi/4.0.4
 module load netcdf-wrf/0.1
