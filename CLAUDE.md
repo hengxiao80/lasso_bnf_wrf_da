@@ -128,7 +128,8 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   `cases/` job scripts say `priority_long` because they were copied from sey's setup and are kept as
   a record of what ran; do not copy that into new scripts.) Get the user's go-ahead before submitting
   jobs, run multi-step pipelines one step at a time, and report each result.
-- Commit messages end with the `Co-Authored-By: Claude ...` trailer. The repo has no remote.
+- Commit messages end with the `Co-Authored-By: Claude ...` trailer. Remote `origin` is GitHub
+  (`https://github.com/hengxiao80/lasso_bnf_wrf_da.git`); push only when the user asks.
   `.gitignore` allowlists only small config files under `cases/`; new small files there need adding to it.
 
 ## Gotchas learned the hard way
