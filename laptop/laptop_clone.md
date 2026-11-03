@@ -16,7 +16,7 @@ This rule applies only to the clone on the user's Mac. Its source is `laptop/lap
 ## What to edit
 
 - Markdown under `notes/`, and `CLAUDE.md` when the user asks. Nothing under `scripts/`, `patches/`, `cases/`, `src/` or other code. A code change worked out here goes into a hand-off note for a Cirrus session (below).
-- Markdown written for the user follows the Typora rules in `~/.claude/rules/typora-markdown.md`. If that file isn't on this machine, ask the user for it before writing notes.
+- The user-level rules (`typora-markdown.md`, `answer-style.md`, `working-style.md`) come from the user's `claude_config` repo, linked into `~/.claude/rules/`. If they aren't loaded on this machine, ask the user before writing notes.
 - Before saying an edit is done, look at `git diff` for changes beyond the intended ones: Typora can rewrite tables, escapes or blank lines when it saves a file.
 
 ## Git
@@ -31,6 +31,4 @@ This rule applies only to the clone on the user's Mac. Its source is `laptop/lap
 
 ## Carried over from the Cirrus sessions' memory
 
-- No LaTeX in chat answers: the terminal doesn't render it. Derivations go into the relevant note (Typora rules), and the reply points to the section and uses plain text or Unicode (λ, σ², ≈).
-- Short status lines need the same technical care as full answers (right tool, e.g. DART vs WRFDA; right quantity, e.g. value vs tendency). If there is no room to say it precisely, say less.
 - In DART `input.nml` walkthrough sessions, append each explanation to `notes/dart_namelist_discussion_log.md` as it happens: dated, naming the namelist block(s), with the short answer and cross-references to related variables and to `initial_plan_from_codex/`. Append at the bottom; don't rewrite earlier entries unless correcting them.
