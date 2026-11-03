@@ -116,6 +116,16 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   with what Claude Code keeps for them under `~/.claude`; it lists them and asks first (`-n`: only list), skips
   running ones. Transcript dumps (before every compaction and on `/clear`): `notes/transcripts/` (not in git).
 
+## Laptop clone
+
+- The user also has a clone of this repo on a Mac for reading and editing notes, with Claude Code there too. No
+  code changes are made in it. Claude there follows `laptop/laptop_clone.md`, which that clone links into its
+  git-ignored `.claude/rules/`. Keep that file out of `.claude/rules/` here, and tell the user when it changes.
+- The user syncs the two copies through GitHub, usually by hand. Sessions here pull or push only when the user
+  asks. After a pull, notes may contain edits made on the laptop.
+- Hand-off notes written on the laptop say so. The session that wrote them isn't in `notes/sessions.md`, because
+  that index is built from this machine's `~/.claude`.
+
 ## Environment and conventions
 
 - Builds and runs need `source scripts/env_wrf.sh` (Core/A100, intel/20.0.4 = ifort 19.1.3, openmpi/4.0.4,
