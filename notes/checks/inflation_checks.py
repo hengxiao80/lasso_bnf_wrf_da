@@ -17,6 +17,8 @@ Sections (note section in brackets):
    8  flavor 5's wrong root; when it is taken                            [5.3]
    9  float32 overflow of beta**alpha: where the flavor-5 sd freezes     [5.4]
   10  damping on lambda (code) against sqrt(lambda) (G18, guide)         [8]
+  11  flavor 2's sd without the no-increase guard: how often it would grow [4.2]
+  12  sd over many observations: flavor 2, flavor 2 without the guard, flavor 5   [5]
 
 Run (a few seconds; give section numbers to run only those):
   uv run --no-project --with numpy python -I notes/checks/inflation_checks.py [n ...]
@@ -250,13 +252,13 @@ if run(5):
         print(f"flavor {fl}, floor {sdlb}: " + "  ".join(out))
 
 if run(6):
-    hdr("6. Random innovations at one element, radar sd 2, 2000 obs, d ~ N(0, lam_true sp2 + so2) [note 7.3]")
+    hdr("6. Random innovations at one element, radar sd 2, 2000 obs, d ~ N(0, lam_o sp2 + so2) [note 7.3]")
     rng = np.random.default_rng(1)
     sp2, so2 = RADAR2
     for gam in [1.0, 0.3]:
-        for lam_true in [0.7, 1.0, 2.0]:
-            print(f"gamma={gam}, lam_true={lam_true}; lam/sd after n")
-            d_all = rng.normal(0, math.sqrt(lam_true * sp2 + so2), size=2000)
+        for lam_o in [0.7, 1.0, 2.0]:
+            print(f"gamma={gam}, lam_o={lam_o}; lam/sd after n")
+            d_all = rng.normal(0, math.sqrt(lam_o * sp2 + so2), size=2000)
             for fl, sdlb, lb in [(2, 0.6, 1.0), (2, 0.3, 1.0), (5, 0.6, 1.0), (5, 0.3, 1.0), (5, 0.3, 0.0)]:
                 lam, sd, out = 1.0, 0.6, []
                 for k, d in enumerate(d_all, 1):
@@ -267,7 +269,7 @@ if run(6):
                 print(f"   flavor {fl}, floor {sdlb}, lower bound {lb}: " + "  ".join(out))
 
 if run(7):
-    hdr("7. Constant gain: lambda with a fixed sd, radar sd 2, lam_true 1.5, lower bound 0, 20000 obs [note 7.4]")
+    hdr("7. Constant gain: lambda with a fixed sd, radar sd 2, lam_o 1.5, lower bound 0, 20000 obs [note 7.4]")
     rng = np.random.default_rng(2)
     sp2, so2 = RADAR2
     for gam in [1.0, 0.5]:
@@ -325,3 +327,72 @@ if run(10):
     hdr("10. Damping 0.9: on lambda (code) against on sqrt(lambda) (G18, guide note) [note 8]")
     for lam in [1.5, 2.0, 3.0, 5.0]:
         print(f"lam={lam}: code {1 + 0.9 * (lam - 1):.4f}; sqrt form {(1 + 0.9 * (math.sqrt(lam) - 1)) ** 2:.4f}")
+
+if run(11):
+    hdr("11. Flavor 2's sd update without the no-increase guard; lam_b = 1, d ~ N(0, theta^2(lam_true)), "
+        "4000 obs [note 4.2]")
+
+    def lnL(d2, sp2, so2, lam, gam):
+        th2 = theta2(lam, gam, sp2, so2)
+        return -0.5 * math.log(2 * math.pi * th2) - d2 / (2 * th2)
+
+    rng = np.random.default_rng(5)
+    for name, (sp2, so2) in (("METAR", METAR), ("radar sd 2", RADAR2), ("radar sd 8", RADAR8)):
+        for gam in (1.0, 0.5):
+            for sd in (0.6, 0.3):
+                for lam_true in (1.0, 2.0):
+                    grow = exact = approx = 0
+                    ratios = []
+                    for _ in range(4000):
+                        d2 = rng.normal(0, math.sqrt(theta2(lam_true, gam, sp2, so2))) ** 2
+                        lu = linear_bayes(d2, sp2, so2, 1.0, sd * sd, gam)
+                        R = gauss_post(d2, sp2, so2, 1.0, sd, gam, lu + sd) / gauss_post(d2, sp2, so2, 1.0, sd, gam, lu)
+                        if R > 0.99:
+                            continue
+                        ratios.append(math.sqrt(-sd * sd / (2 * math.log(R))) / sd)
+                        g = ratios[-1] > 1
+                        grow += g
+                        # exact criterion: lnL(lu + sd) - lnL(lu) > (lu - lam_b)/sd; approximate: d^2 < theta^2/2
+                        exact += ((lnL(d2, sp2, so2, lu + sd, gam) - lnL(d2, sp2, so2, lu, gam)) > (lu - 1.0) / sd) == g
+                        approx += (d2 < theta2(1.0, gam, sp2, so2) / 2) == g
+                    n, r = len(ratios), np.array(ratios)
+                    print(f"{name:10s} gam {gam} sd {sd} lam_true {lam_true}: would grow {grow / n:6.1%}; "
+                          f"sd ratio 5/50/95 % {np.percentile(r, 5):.4f} {np.median(r):.4f} {np.percentile(r, 95):.4f}; "
+                          f"criterion agrees: exact {exact / n:6.1%}, d2 < theta2/2 {approx / n:6.1%}")
+
+if run(12):
+    hdr("12. sd over 3000 random innovations (radar sd 2), mean of 20 runs: flavor 2, flavor 2 without the "
+        "no-increase guard, flavor 5; start (1, 0.6), floor 0.1, bounds [0.2, 50] [note 5]")
+
+    def f2_no_guard(dist2, sp2, so2, lm, lsd, gam, sd_lb):
+        """bayes_cov_inflate for flavor 2 without the test new sd > old sd."""
+        new = linear_bayes(dist2, sp2, so2, lm, lsd ** 2, gam)
+        if abs(lsd - sd_lb) <= TINY:
+            return new, lsd
+        nmax = gauss_post(dist2, sp2, so2, lm, lsd, gam, new)
+        n1 = gauss_post(dist2, sp2, so2, lm, lsd, gam, new + lsd)
+        if abs(nmax) <= TINY or abs(n1) <= TINY or n1 / nmax > 0.99:
+            return new, lsd
+        return new, math.sqrt(-lsd ** 2 / (2 * math.log(n1 / nmax)))
+
+    sp2, so2 = RADAR2
+    for gam in (1.0, 0.3):
+        for lam_true in (1.0, 2.0):
+            res = {k: [] for k in ('flavor 2', 'flavor 2, no guard', 'flavor 5')}
+            for seed in range(20):
+                ds = np.random.default_rng(100 + seed).normal(0, math.sqrt(theta2(lam_true, gam, sp2, so2)), size=3000)
+                for kind in res:
+                    lam, sd, snap = 1.0, 0.6, []
+                    for n, d in enumerate(ds, 1):
+                        if kind == 'flavor 2, no guard':
+                            lam, sd = f2_no_guard(d * d, sp2, so2, lam, sd, gam, 0.1)
+                            lam, sd = min(max(lam, 0.2), 50.0), max(sd, 0.1)
+                        else:
+                            lam, sd, _ = update_inflation(5, 2 if kind == 'flavor 2' else 5, 0.0, sp2, d, so2, lam, sd,
+                                                          gam, lb=0.2, ub=50.0, sd_lb=0.1, sd_max=1.05)
+                        if n in (300, 1000, 3000):
+                            snap.append(sd)
+                    res[kind].append(snap)
+            print(f"gamma {gam}, lam_true {lam_true}: mean sd at n = 300 / 1000 / 3000")
+            for k, v in res.items():
+                print(f"   {k:19s} " + " / ".join(f"{x:.3f}" for x in np.mean(v, axis=0)))
