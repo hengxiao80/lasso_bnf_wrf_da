@@ -3,7 +3,7 @@
 Written 2026-10-25 as a walk-through of the ensemble adjustment Kalman filter (EAKF) as our `filter` runs it: where the method comes from, the math of one observation, how DART applies it to many observations and a large state, the code step by step, and how it relates to the perturbed-observation EnKF, the serial EnSRF that HRRRDAS uses, and the ETKF and LETKF.
 
 **Sources.**
-- DART papers (PDFs in `notes/`):
+- DART papers (PDFs in `notes/papers/`):
   - **A01:** Anderson (2001), "An ensemble adjustment Kalman filter for data assimilation", MWR 129, 2884–2903, doi:10.1175/1520-0493(2001)129<2884:AEAKFF>2.0.CO;2. Equation numbers "A01 (n)" are the paper's, as for all papers below.
   - **A03:** Anderson (2003), "A local least squares framework for ensemble filtering", MWR 131, 634–642: the two steps (observation increment, then regression).
   - **AC07:** Anderson and Collins (2007), "Scalable implementations of ensemble filter algorithms for data assimilation", JTECH 24, 1452–1463, doi:10.1175/JTECH2049.1: the parallel algorithm DART (and GSI-EnKF) use.
@@ -11,7 +11,7 @@ Written 2026-10-25 as a walk-through of the ensemble adjustment Kalman filter (E
   - **G+25:** Gharamti et al. (2025), "The Data Assimilation Research Testbed: A robust, scalable software facility with groundbreaking capabilities ...", BAMS (November 2025), E2328ff, doi:10.1175/BAMS-D-24-0214.1.
   - **GC99:** Gaspari and Cohn (1999), "Construction of correlation functions in two and three dimensions", QJRMS 125, 723–757, doi:10.1002/qj.49712555417: the localization function, their Eq. (4.10).
   - The sampling-error correction (A12) and inflation papers (A07a, A09, G18) are cited in their own notes.
-- Other ensemble filters (PDFs in `notes/`; DOIs checked against Crossref):
+- Other ensemble filters (PDFs in `notes/papers/`; DOIs checked against Crossref):
   - **B98:** Burgers, van Leeuwen and Evensen (1998), "Analysis scheme in the ensemble Kalman filter", MWR 126, 1719–1724, doi:10.1175/1520-0493(1998)126<1719:ASITEK>2.0.CO;2.
   - **HM98:** Houtekamer and Mitchell (1998), "Data assimilation using an ensemble Kalman filter technique", MWR 126, 796–811, doi:10.1175/1520-0493(1998)126<0796:DAUAEK>2.0.CO;2.
   - **HM01:** Houtekamer and Mitchell (2001), "A sequential ensemble Kalman filter for atmospheric data assimilation", MWR 129, 123–137, doi:10.1175/1520-0493(2001)129<0123:ASEKFF>2.0.CO;2.
@@ -26,11 +26,11 @@ Written 2026-10-25 as a walk-through of the ensemble adjustment Kalman filter (E
   - **HZ16:** Houtekamer and Zhang (2016), "Review of the ensemble Kalman filter for atmospheric data assimilation", MWR 144, 4489–4532, doi:10.1175/MWR-D-15-0440.1.
   - **B17:** Bishop, Whitaker and Lei (2017), "Gain form of the ensemble transform Kalman filter and its relevance to satellite data assimilation with model space ensemble covariance localization", MWR 145, 4575–4592, doi:10.1175/MWR-D-17-0102.1.
 - HRRRDAS:
-  - **D20:** Dowell (2020), "HRRR Data-Assimilation System (HRRRDAS) and HRRRE Forecasts", NOAA/GSL document, 1 March 2020 (PDF in `notes/`).
-  - **D22:** Dowell et al. (2022), "The High-Resolution Rapid Refresh (HRRR): An hourly updating convection-allowing forecast model. Part I: Motivation and system description", WAF 37, 1371–1395, doi:10.1175/WAF-D-21-0151.1 (PDF in `notes/`): Sec. 3d and Table 5.
+  - **D20:** Dowell (2020), "HRRR Data-Assimilation System (HRRRDAS) and HRRRE Forecasts", NOAA/GSL document, 1 March 2020 (PDF in `notes/papers/`).
+  - **D22:** Dowell et al. (2022), "The High-Resolution Rapid Refresh (HRRR): An hourly updating convection-allowing forecast model. Part I: Motivation and system description", WAF 37, 1371–1395, doi:10.1175/WAF-D-21-0151.1 (PDF in `notes/papers/`): Sec. 3d and Table 5.
   - Code: the HRRR repo, `../software/HRRR` at `40ee6058` (hrrr.v4.1.20): `scripts/hrrrdas/exhrrr_enkf.sh`, `parm/hrrrdas/hrrrdas_enkf_wrf_namelist.sh`, and GSI-EnKF in `sorc/hrrr_gsi.fd/src/enkf/` (`enkf.f90`, `inflation.f90`, `covlocal.f90`, `params.f90`, `enkf_main.f90`). "GSI `enkf.f90:n`" below refers to this copy.
 - LETKF code: GSI, `../software/GSI` at `124138df0`, `src/enkf/letkf.f90` (the HRRR copy has it too, as `letkf.F90`; HRRRDAS doesn't use it).
-- Not in `notes/`, background only: the QCEFF papers, Anderson (2022), MWR 150, 1061–1074, doi:10.1175/MWR-D-21-0229.1; Anderson (2023), MWR 151, 2759–2777, doi:10.1175/MWR-D-23-0065.1; Anderson et al. (2024), MWR 152, 2111–2127, doi:10.1175/MWR-D-23-0255.1.
+- Not in `notes/papers/`, background only: the QCEFF papers, Anderson (2022), MWR 150, 1061–1074, doi:10.1175/MWR-D-21-0229.1; Anderson (2023), MWR 151, 2759–2777, doi:10.1175/MWR-D-23-0065.1; Anderson et al. (2024), MWR 152, 2111–2127, doi:10.1175/MWR-D-23-0255.1.
 - **DART code:** `7bbd35a09`, under `../software/DART/assimilation_code/`: `modules/assimilation/assim_tools_mod.f90` (bare line numbers below), `cov_cutoff_mod.f90`, `algorithm_info_mod.f90`, `probit_transform_mod.f90`, `adaptive_inflate_mod.f90`, and `location/threed_sphere/location_mod.f90`. The WRF build compiles `assim_tools_mod.f90` (`models/wrf/work/quickbuild.log`); `assim_tools_mod.pf.f90` next to it is a particle-filter variant.
 - **Numbers:** from `notes/checks/eakf_checks.py` (Sec. 12), which translates DART's `obs_increment_eakf`, `obs_increment_enkf`, `update_from_obs_inc` and `obs_updates_ens`, GSI's serial EnSRF, an LETKF (H07 (20)–(25) with GSI's R-localization), a global ETKF, A01's Appendix A, and both Gaspari–Cohn functions. Float64, except Sec. 7.8, which emulates float32.
 
@@ -286,7 +286,13 @@ $$
 y^{\,j}_n \leftarrow y^{\,j}_n + \kappa_{jk}\,S_{jk}\,b_{jk}\,\Delta y^{\,k}_n, \qquad j > k \tag{13}
 $$
 
-(AC07 (3.13), here with DART's $\kappa$ and $S$.) For linear $h$ the two algorithms give the same answer; for nonlinear $h$ they are different linear approximations (AC07 abstract). In check 9 (Sec. 12; $y = x^2$, 20 members), the analysis means differ by 4–12 % of the mean increment. The parallel form lets all forward operators run at once, right after the model advance, and makes the state transpose to "ensemble-complete" storage a single step (AC07 Sec. 4). It is what DART runs.
+(AC07 (3.13), here with DART's $\kappa$ and $S$.) For linear $h$ the two algorithms give the same answer; for nonlinear $h$ they are different linear approximations (AC07 abstract). In check 9 (Sec. 12; $y = x^2$, 20 members), the analysis means differ by 4–12 % of the mean increment. The parallel algorithm is what DART runs, and GSI-EnKF too (`enkf.f90:10–31`).
+
+**Both are serial in the observations.** The names are AC07's and describe the computing, not the order of the observations: both algorithms take one observation at a time. In the parallel one, the H(x) of the observations not yet used are updated by regression like state elements, at the cost of the extra regressions onto them ($O(K^2)$ for $K$ observations, AC07 Sec. 3c; with localization only the close ones). What that buys (AC07 Sec. 4):
+- The forward operators run once, for all observations and members together, right after the model advance, while each member's state is still in one place ("state-complete").
+- One transpose to "ensemble-complete" storage (all members of an element on one rank) before the loop; then, for each observation, every rank updates its own state elements and H(x) (Sec. 7.4). In the sequential algorithm $h_k$ needs the member states as updated by the observations before $k$, so a direct implementation needs a pair of transposes for every observation.
+
+What stays serial is the observation increment, one observation after another, which AC07 call the rate-limiting part (Sec. 4a). They note that observations more than $2c$ apart could get their increments concurrently; DART doesn't do that (one broadcast per observation, `:583–672`). The distinction that changes the result, serial against simultaneous (all observations at once: the batch update, the ETKF, the LETKF), is Sec. 6.2.
 
 DART's loop (Sec. 7.3 has the line numbers):
 
