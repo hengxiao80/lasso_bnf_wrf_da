@@ -305,3 +305,34 @@ Xg1 = getkf_raw_update(Xs, H1, y1, R1, Zm)
 Xd1 = dart_serial(Xs, H1 @ Xs, y1, R1, loc_xo=F[:, [io]])
 print(f"one ob at a grid point: max|GETKF(modulated) - DART EAKF with B-loc| = "
       f"{abs(Xg1 - Xd1).max():.1e}  (increments up to {abs(Xd1 - Xs).max():.2f})")
+
+# ============================================================================
+hdr("6. Example A of the note: 3 members, y observed, x another variable")
+Xa_ = np.array([[9.0, 10.0, 11.0],        # y, the observed quantity (row 0)
+                [18.0, 21.0, 21.0]])      # x, another state variable (row 1)
+yA = np.array([11.0]); RA = np.array([1.0])
+HA = Xa_[0:1].copy()
+yp = Xa_[0] - Xa_[0].mean(); xp = Xa_[1] - Xa_[1].mean()
+print(f"y' = {yp}, x' = {xp}, var y = {yp @ yp / 2:.3f}, var x = {xp @ xp / 2:.3f}, "
+      f"cov = {xp @ yp / 2:.3f}, corr = {(xp @ yp) / np.sqrt((xp @ xp) * (yp @ yp)):.3f}")
+proj = (xp @ yp) / (yp @ yp) * yp
+print(f"x' along y': {proj}, rest: {xp - proj} (rest . y' = {(xp - proj) @ yp:.1e})")
+for kap in (1.0, 0.5):
+    Xe = dart_serial(Xa_, HA, yA, RA, loc_xo=np.array([[1.0], [kap]]))
+    Xl, Ws, wbars = letkf(Xa_, HA, yA, RA, loc_ro=np.array([[1.0], [kap]]), return_w=True)
+    trace = []
+    dart_serial(Xa_, HA, yA, RA, loc_xo=np.array([[1.0], [kap]]), trace=trace)
+    wbar, T = eakf_transform(trace, yA, RA, np.array([kap]), 3)
+    print(f"kappa = {kap}: EAKF x members {np.round(Xe[1], 3)} (mean {Xe[1].mean():.3f}), "
+          f"y members {np.round(Xe[0], 3)}")
+    print(f"   EAKF weights wbar = {np.round(wbar, 3)}, T =\n{np.round(T, 3)}")
+    print(f"   LETKF x members {np.round(Xl[1], 3)} (mean {Xl[1].mean():.3f}); "
+          f"shrink factor along y' {np.sqrt(1 / (1 + kap)):.3f} vs EAKF {1 + kap * (np.sqrt(0.5) - 1):.3f}")
+# swapping two members: same mean and covariance, different members
+Pm = np.eye(3)[:, [2, 1, 0]]
+print(f"permutation U: U U^T = I {np.allclose(Pm @ Pm.T, np.eye(3))}, U 1 = 1 "
+      f"{np.allclose(Pm @ np.ones(3), np.ones(3))}")
+# accurate observation: sigma_o = sigma_y / 4, weight 0.5
+r = 16.0
+print(f"sigma_y/sigma_o = 4, kappa = 0.5: gain relative to unlocalized: EAKF 0.500, "
+      f"LETKF {(r + 1) / (r + 2):.3f}")
