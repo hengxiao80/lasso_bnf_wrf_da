@@ -40,6 +40,7 @@ Written 2026-10-25 as a walk-through of the ensemble adjustment Kalman filter (E
 - `dart_adaptive_inflation.md`: the prior inflation that sets $\sigma_y^2$ before the EAKF sees it.
 - `codex.WRF_DART_Discussion_and_Branches_Summary_v1.md` Sec. 7–8: an earlier summary of the EAKF and its relatives. Its EAKF–EnSRF identity is confirmed in Sec. 9.3 here.
 - `obs_expansion.md`, "EnKF" table: HRRRDAS's EnKF settings. `wrf_dart_tutorial_adaptation.md`: HRRRDAS's analysis variables.
+- `eakf_vs_letkf.md`: the EAKF against the LETKF in detail (both as ensemble transforms, R- against B-localization, the gain form, GSI's and JEDI's LETKF); continues Sec. 9.4–9.6.
 
 **Typora.** Display equations are `$$` blocks. Inline math (`$...$`) needs *Preferences → Markdown → Inline Math*.
 
