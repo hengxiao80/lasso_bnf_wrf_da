@@ -1,0 +1,48 @@
+#!/bin/bash
+# WRFDA RANDOMCV draws for the shared perturbation bank (notes/fulltest_steps.md A3): draws 16-150, written
+# into cases/20250520/da_common_theta_m0/perts/ through this experiment's perts/work and perts/bank links.
+# Draws 1-15 are the 5-member pilot's (step 4, da_theta_m0_n5/slurm.pert_draw). One array task per draw:
+#   1. scripts/da/run_wrfda_draw.sh: da_wrfvar.exe in perts/work/draw_NNN (fg = mean 05-20 00Z wrfinput,
+#      seed_array1 = 52000, seed_array2 = 10 x draw); refuses a draw whose wrfvar_output exists;
+#   2. scripts/da/wrfda_bank_diff.py: perts/bank/pert_bank_NNN.nc = wrfvar_output - fg for U V THM QVAPOR MU
+#      (stops on a non-finite value; skips an existing bank file);
+#   3. scripts/da/check_wrfda_draw.py: report in perts/work/draw_NNN/check_wrfda_draw.txt.
+# One node, 16 MPI ranks, as every draw of the bank: the rank enters WRFDA's seed, so a draw is
+# reproducible only with 16 ranks.
+#   mkdir -p logs; sbatch --array=16-150%30 slurm.pert_draw
+#   EXP_SH=<other experiment.sh> DRAW=<n> sbatch --output=logs/slurm.pert_draw.%j.out slurm.pert_draw
+#      (one draw; with a test experiment.sh that sources this one and sets its own PERTS_DIR, as the A3
+#       reproducibility test did, job 1194357)
+#SBATCH --job-name=pertdraw
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:20:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=1
+#SBATCH --output=logs/slurm.pert_draw.%A_%a.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${EXP_SH:-${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh}
+DRAW=${DRAW:-${SLURM_ARRAY_TASK_ID:?set DRAW or submit as an array}}
+PY=${PROJECT_DIR}/.venv/bin/python
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+source "${EXP_SH}"
+work=${PERTS_DIR}/work/draw_$(printf %03d "$((10#${DRAW}))")
+echo "draw ${DRAW}: experiment ${EXP_SH}, PERTS_DIR ${PERTS_DIR} -> $(readlink -f "${PERTS_DIR}/work")"
+
+# UCX as in the real.exe jobs (single-node, non-wrf.exe MPI job); wrf.exe jobs use a different
+# setting (see slurm.wrf). WRFDA is pure MPI here.
+export UCX_TLS=rc,xpmem,self
+export OMP_NUM_THREADS=1
+ulimit -s unlimited
+
+${PROJECT_DIR}/scripts/da/run_wrfda_draw.sh "${EXP_SH}" "${DRAW}" || { date; exit 1; }
+grep -h 'Setting seed_array' "${work}/rsl.out.0000" "${work}/rsl.out.0015"
+${PY} ${PROJECT_DIR}/scripts/da/wrfda_bank_diff.py "${PERTS_DIR}" "${DRAW}" || { date; exit 1; }
+${PY} ${PROJECT_DIR}/scripts/da/check_wrfda_draw.py "${work}" > "${work}/check_wrfda_draw.txt" 2>&1 \
+   || { cat "${work}/check_wrfda_draw.txt"; date; exit 1; }
+date
