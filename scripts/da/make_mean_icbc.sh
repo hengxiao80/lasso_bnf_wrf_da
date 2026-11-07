@@ -41,6 +41,15 @@ for f in "${WRF_RUN_DIR}"/*; do
    [[ -e ${name} ]] || ln -s "$f" "${name}"
 done
 
+# runtime I/O file the namelist names, if any (since 2026-11-06: iofields_real.txt, which adds REFL_10CM to
+# wrfinput for DART's GRID_FILE), copied from the config directory; also saved with each hour's logs
+iof=$(sed -n "s/^ *iofields_filename *= *'\([^']*\)'.*/\1/p" "${CONFIG_DIR}/namelist.input.real")
+if [[ -n ${iof} ]]; then
+   [[ -r ${CONFIG_DIR}/${iof} ]] || { echo "missing ${CONFIG_DIR}/${iof} (iofields_filename)"; exit 1; }
+   rm -f "${iof}"
+   cp "${CONFIG_DIR}/${iof}" "${iof}"
+fi
+
 start_epoch=$(date -u -d "${CASE_START:0:4}-${CASE_START:4:2}-${CASE_START:6:2} ${CASE_START:8:2}:00:00" +%s)
 
 nfail=0
@@ -75,7 +84,7 @@ for (( h=first_hour; h<=last_hour; h++ )); do
    status=$?
 
    mkdir -p "${MEAN_DIR}/logs/${t}"
-   cp namelist.input rsl.out.0000 rsl.error.0000 "${MEAN_DIR}/logs/${t}/" 2>/dev/null
+   cp namelist.input rsl.out.0000 rsl.error.0000 ${iof:+"${iof}"} "${MEAN_DIR}/logs/${t}/" 2>/dev/null
 
    if [[ ${status} -eq 0 && -s wrfinput_d01 ]] && \
       grep -q "SUCCESS COMPLETE REAL_EM INIT" rsl.out.0000; then

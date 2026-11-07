@@ -1,6 +1,10 @@
 ! Template for scripts/da/make_mean_icbc.sh: real.exe for ONE time level (start = end),
 ! which writes only wrfinput_d01 for that hour. Copied from cases/20250520/theta_m0/real/namelist.input
 ! (hybrid_opt = 0, use_theta_m = 0); only &time_control is templated (@YYYY@ @MM@ @DD@ @HH@).
+! Since 2026-11-06 (fulltest_steps.md A4): iofields_filename adds REFL_10CM to wrfinput (iofields_real.txt,
+! +:i:0:REFL_10CM; allocated because do_radar_ref = 1; real.exe computes no reflectivity), so the mean 00Z
+! wrfinput can be filter's wrfinput_d01 (GRID_FILE), which needs every DART state variable.
+! make_mean_icbc.sh copies the file named here from the config directory into its work directory.
  &time_control
  start_year                          = @YYYY@, @YYYY@, @YYYY@,
  start_month                         = @MM@, @MM@, @MM@,
@@ -20,6 +24,7 @@
  io_form_restart                     = 11
  io_form_input                       = 2
  io_form_boundary                    = 2
+ iofields_filename                   = 'iofields_real.txt',
 /
 
  &domains

@@ -184,11 +184,12 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   exited 30 s after SUCCESS, then cancel; "wrf exit guard"). Stacks of a hung step without ptrace:
   `scripts/da/hang_snapshot.py` (perf) and `hang_summary.py`.
 - **Every DART state variable must also be in filter's `wrfinput_d01`** (`GRID_FILE` in `experiment.sh`): WRF
-  `model_mod` takes each state variable's shape from it, not only the static grid. `real.exe`'s `wrfinput` lacks
-  `REFL_10CM`, so `GRID_FILE` is `mean/dart_wrfinput_d01_2025-05-20_00_00_00` (`scripts/da/make_grid_file.py`);
-  run 1 stopped on this (2026-10-21). A new state field not in it needs `make_grid_file.py --add`. Interim fix:
-  after runs 3 or 4, `real.exe` is to write `REFL_10CM` itself (runtime I/O `+:i:0:REFL_10CM`) and `GRID_FILE` goes
-  back to the plain mean 00Z `wrfinput` (user, 2026-10-21; steps in `notes/obs_expansion.md` Sec. 9, run 1).
+  `model_mod` takes each state variable's shape from it, not only the static grid; run 1 stopped on a missing
+  `REFL_10CM` (2026-10-21). `GRID_FILE` is the mean 00Z `wrfinput`, into which `real.exe` writes `REFL_10CM` by
+  runtime I/O (`da_common_theta_m0/config/iofields_real.txt`, `+:i:0:REFL_10CM`; since 2026-11-06,
+  `notes/fulltest_steps.md` A4; from 10-21 to 11-06 a copy with `REFL_10CM` added by `make_grid_file.py`, deleted).
+  A new state field `real.exe` doesn't write goes into `iofields_real.txt` (if `real.exe` allocates it), and the
+  mean 00Z `wrfinput` is made again.
 - Give filter jobs `slurm.cycle`'s shape and environment (`--ntasks-per-node=16 --cpus-per-task=8`, the `OMP_*`
   settings, `ulimit -s 64000000`). The filter step's own `srun` options were identical, yet a job shaped
   128 × 1 per node without the `OMP_*` settings made filter's observation loop 27 % slower.

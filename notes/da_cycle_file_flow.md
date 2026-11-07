@@ -25,7 +25,8 @@ The mean states, the perturbations and filter's grid file. All runs (`RUN_NAME`s
    |
    | make_mean_icbc.sh (slurm.make_mean_icbc): real.exe for one
    |   time level per hour, in E/mean/work_real/, logs in
-   |   E/mean/logs/<t>/
+   |   E/mean/logs/<t>/; config/iofields_real.txt adds REFL_10CM
+   |   (zeros) to wrfinput (since 2026-11-06, 05-20 00Z only)
    v
  E/mean/wrfinput_d01_<YYYY-MM-DD_HH>_00_00     73 hourly mean states
  E/mean/wrfbdy_d01 -> theta_m0/real/wrfbdy_d01 (link; real.exe, 72 h)
@@ -35,23 +36,24 @@ The mean states, the perturbations and filter's grid file. All runs (`RUN_NAME`s
    |     be.dat -> WRFDA's be.dat.cv3, namelist.input from
    |     config/namelist.input.3dvar with the seeds;
    |     da_wrfvar.exe (RANDOMCV) writes wrfvar_output = fg + pert
+   |     (deleted once the bank is checked, 2026-11-06)
    |   wrfda_bank_diff.py: wrfvar_output - fg for U V THM QVAPOR MU
    |     -> E/perts/bank/pert_bank_NNN.nc (unscaled)
    |   assign_perturbations.py: pick NUM_ENS draws (fixed seed),
    |     scale (1.3 U V THM QVAPOR, 0.6 MU), center
    |     -> E/perts/members/pert_memNNN.nc, E/perts/assignment.txt
    |
-   +-> make_grid_file.py: mean 00Z wrfinput + REFL_10CM defined
-         as in a wrfrst of the patched WRF (zeros; only its shape
-         is read) -> E/mean/dart_wrfinput_d01_2025-05-20_00_00_00
-         = GRID_FILE in experiment.sh; prep_filter.sh links it
-         into F/ as wrfinput_d01 every cycle, and filter and
+   +-> the mean 00Z wrfinput, with REFL_10CM, is GRID_FILE in
+         experiment.sh; prep_filter.sh links it into F/ as
+         wrfinput_d01 every cycle, and filter and
          fill_inflation_restart read it for the static grid and
          as the template for every state variable's dimensions
-         and attributes (Sec. 4.1)
+         and attributes (Sec. 4.1). From 2026-10-21 to 11-06:
+         E/mean/dart_wrfinput_d01_2025-05-20_00_00_00, a copy
+         with REFL_10CM added by make_grid_file.py (deleted)
 ```
 
-In the cycle, `GRID_FILE` is read only through that link. The observation scripts take the grid from files with the same grid and terrain: `make_cycle_obs.sh` sets its own `GRID_FILE` to the plain mean 00Z `wrfinput` and links that into its work directory as `wrfinput_d01` for `wrf_dart_obs_preprocess`, and `make_cycle_mesonet.sh` passes `experiment.sh`'s `GRID_FILE` to `select_mesonet_cycle.py` for the terrain height and the projection.
+In the cycle, `GRID_FILE` is read only through that link. The observation scripts take the grid from files with the same grid and terrain: `make_cycle_obs.sh` sets its own `GRID_FILE` to the mean 00Z `wrfinput` (the same file since 2026-11-06) and links that into its work directory as `wrfinput_d01` for `wrf_dart_obs_preprocess`, and `make_cycle_mesonet.sh` passes `experiment.sh`'s `GRID_FILE` to `select_mesonet_cycle.py` for the terrain height and the projection.
 
 ## 2. The members' cold-start files
 
