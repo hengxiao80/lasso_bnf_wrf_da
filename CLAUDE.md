@@ -105,10 +105,12 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   `real/` subdirectory, then linked up), `iotest/`, `figures/`, and `DATA_SOURCES.md`.
 - DA directories in `cases/20250520/` (since 2026-11-06, user): `da_common_theta_m0/` holds the inputs shared by
   every `theta_m0` (`hybrid_opt = 0`, 1 + 4) DA experiment: `mean/` (hourly mean states, `GRID_FILE`),
-  `perts/bank/` and `perts/work/` (WRFDA draws), and the observation sets `obs*/` (made for the 1 + 4 zone,
-  `obs_boundary = 5`). Each experiment directory links them in (relative links `mean`, `obs*`, `perts/bank`,
-  `perts/work`) and has its own `config/`, `perts/members/`, `perts/assignment.txt`, `run/`, `bdy/`, `run*/`,
-  `output*/`. **`da_theta_m0_n5/` is the 5-member experiment, named `da_theta_m0` until 2026-11-06;
+  `perts/bank/` and `perts/work/` (WRFDA draws), the observation sets `obs*/` (made for the 1 + 4 zone,
+  `obs_boundary = 5`), and `config/` with the files that make them (`namelist.input.real`,
+  `namelist.input.3dvar`, `input.nml.obs_preprocess`; since 2026-11-06, user). Each experiment directory links
+  them in (relative links `mean`, `obs*`, `perts/bank`, `perts/work`, and those three files in its `config/`)
+  and has its own `config/` otherwise, `perts/members/`, `perts/assignment.txt`, `run/`, `bdy/`, `run*/`,
+  `output*/`. The full test's `config/` has only the one-pass filter files (`input.nml.filter_joint`). **`da_theta_m0_n5/` is the 5-member experiment, named `da_theta_m0` until 2026-11-06;
   `da_theta_m0` is now a link to it**, so paths in finished runs, notes and scripts still resolve.
   `da_theta_m0_n50/` is the 50-member full test (`notes/fulltest_steps.md`). A new experiment links the common
   inputs the same way.

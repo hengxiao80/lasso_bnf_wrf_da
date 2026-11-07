@@ -1,8 +1,10 @@
 """Innovation statistics per observation type, pooled over a run's cycles (notes/obs_expansion.md Sec. 5).
 
-Usage: .venv/bin/python scripts/da/innovation_stats.py <output dir name, e.g. output_hph>
+Usage: .venv/bin/python scripts/da/innovation_stats.py <run output dir>
 
-Reads cases/20250520/da_theta_m0/<run>/<YYYYMMDDHHMM>/filter/obs_seq.final. Per type: DART QC counts;
+<run output dir> is a run's output directory (e.g. cases/20250520/da_theta_m0_n50/output_x), or, if no
+such directory exists, the name of one in the 5-member experiment (e.g. output_hph, as before 2026-11-06).
+Reads <run output dir>/<YYYYMMDDHHMM>/filter/obs_seq.final. Per type: DART QC counts;
 for obs with a valid prior (QC 0 or 7) the innovation d = y - mean H(x_b) (bias, rms), the rms prior
 spread, the rms assigned error sig_o, the consistency ratio mean(d^2) / mean(spread^2 + sig_o^2), the
 implied error sqrt(mean d^2 - mean spread^2) (an upper bound if the spread is too small) and the
@@ -20,12 +22,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from check_filter_gate import read_obs_seq  # noqa: E402
 
+# the 5-member experiment (da_theta_m0 is a link to da_theta_m0_n5), for a bare run name
 EXP_DIR = os.path.join(HERE, "..", "..", "cases", "20250520", "da_theta_m0")
 
 
 def main():
     run = sys.argv[1]
-    files = sorted(glob.glob(os.path.join(EXP_DIR, run, "2025052*", "filter", "obs_seq.final")))
+    run_dir = run if os.path.isdir(run) else os.path.join(EXP_DIR, run)
+    files = sorted(glob.glob(os.path.join(run_dir, "2025052*", "filter", "obs_seq.final")))
     pool = {}
     for f in files:
         copies, qcs, types, recs = read_obs_seq(f)
