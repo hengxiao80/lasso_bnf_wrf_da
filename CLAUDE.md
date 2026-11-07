@@ -103,6 +103,15 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
 - `cases/20250520/`: `geog/` (copied `geo_em.d01.nc`), `wps/` (ungrib/metgrid/reverse, 73 `met_em`
   files), `baseline/` (`real.exe` outputs in place), `hybrid2/` and `theta_m0/` (`real.exe` run in a
   `real/` subdirectory, then linked up), `iotest/`, `figures/`, and `DATA_SOURCES.md`.
+- DA directories in `cases/20250520/` (since 2026-11-06, user): `da_common_theta_m0/` holds the inputs shared by
+  every `theta_m0` (`hybrid_opt = 0`, 1 + 4) DA experiment: `mean/` (hourly mean states, `GRID_FILE`),
+  `perts/bank/` and `perts/work/` (WRFDA draws), and the observation sets `obs*/` (made for the 1 + 4 zone,
+  `obs_boundary = 5`). Each experiment directory links them in (relative links `mean`, `obs*`, `perts/bank`,
+  `perts/work`) and has its own `config/`, `perts/members/`, `perts/assignment.txt`, `run/`, `bdy/`, `run*/`,
+  `output*/`. **`da_theta_m0_n5/` is the 5-member experiment, named `da_theta_m0` until 2026-11-06;
+  `da_theta_m0` is now a link to it**, so paths in finished runs, notes and scripts still resolve.
+  `da_theta_m0_n50/` is the 50-member full test (`notes/fulltest_steps.md`). A new experiment links the common
+  inputs the same way.
 - `patches/`: local deviations from the pinned upstream code, with the reasons.
 - `notes/papers/` (not in git): PDFs of the papers the notes cite (DART, EnKF, HRRR/HRRRDAS).
 - `notes/handoffs/`: hand-off messages between sessions (`YYYY-MM-DD_<session title>.md`); the latest says where
@@ -191,7 +200,9 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   of model time (15-min history, ~1.1 TB). A 16x32 automatic decomposition performed worse.
 - `spec_bdy_width = 10` alone gives WRF's default `spec_zone = 1`, `relax_zone = 4` (rows 5–10 of
   `wrfbdy` unused), not the intended 1 + 9; inherited from sey's setup. All runs so far and the 5-member
-  pilot use 1 + 4; the 50-member DA switches to 1 + 9 (Q18 in `notes/da_5member_pilot_steps.md`).
+  pilot use 1 + 4 (Q18 in `notes/da_5member_pilot_steps.md`). The 50-member full test keeps 1 + 4 too (user,
+  2026-11-06, reversing Q18's plan), so the existing free runs stay valid controls; 1 + 9 comes with the
+  `use_theta_m = 1` / `hybrid_opt` work package before the production DA runs (`notes/fulltest_steps.md` Sec. 2).
 - `real.exe` with `use_netcdf_classic` unset writes compressed netCDF-4 input files, which is fine.
 
 ## External data and other repos

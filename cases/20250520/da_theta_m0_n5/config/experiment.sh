@@ -8,7 +8,10 @@
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
 SOFTWARE_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software
 CASE_DIR=${PROJECT_DIR}/cases/20250520
-EXP_DIR=${CASE_DIR}/da_theta_m0
+# The 5-member experiment, named da_theta_m0 until 2026-11-06 (cases/20250520/da_theta_m0 is a link
+# to it). mean/, perts/bank/, perts/work/ and obs*/ are links into cases/20250520/da_common_theta_m0/,
+# the inputs shared with the 50-member da_theta_m0_n50.
+EXP_DIR=${CASE_DIR}/da_theta_m0_n5
 CONFIG_DIR=${EXP_DIR}/config
 
 WPS_OUT_DIR=${CASE_DIR}/wps                  # met_em.d01.YYYY-MM-DD_HH:00:00.nc (73 hourly files)
