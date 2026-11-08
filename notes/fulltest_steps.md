@@ -115,6 +115,32 @@ Checked after the move: file and link counts and bytes of every moved directory 
 - Members at once and WRF time per cycle, as arithmetic (50 members; every segment as long as alone, i.e. no slowdown from 50 members reading and writing restarts at the same time, which is not measured: B3). With all 116 nodes: 8 nodes per member, 14 at once, 4 waves, ~540 s; 4 nodes, 29 at once, 2 waves, ~360 s; 2 nodes, all 50 on 100 nodes, ~310 s. With 59 nodes (idle on 2026-11-07): 7, 14 and 29 at once; 8, 4 and 2 waves; ~1080, ~720 and ~620 s. Node-time per cycle: ~15, ~10 and ~8.6 node-hours. With 5 members at once the restart read took 22 s (run 5, member 1 at 00:30), alone 24.7 s (B1 test): no slowdown at 5.
 
 **C2. The per-member Python steps** timed one by one (`extract`, `qnrain`, `insert`, refit), and with several per node. At 5 members they took ~100–150 s (update) and ~85 s (extraction) on one node each, longer than the 130-s WRF segment on 8 nodes. Question for B2: how many members' steps a node runs side by side before file I/O slows them (the update varied 97–147 s between cycles with only 5 members at once), i.e. whether they belong in the 40-node filter job or in a few packed nodes. Memory per step too (login and compute nodes: A5/A6 found netCDF chunk caches of several GB per process).
+- **Done 2026-11-08** (`da_theta_m0_n50/slurm.python_steps`, job 1194830, 39 min, 2 nodes). Each member's steps as in the cycle scripts: prior = `extract` with `DART_EXTRA` + copy as `prior_d01.nc`; update = `qnrain`, copy as `analysis_d01.nc`, `insert` (11 fields, `--hydrostatic-ph --prior`), `extract` into `start_d01.nc`, `refit_member_bdy.sh` with 2 records, copies. Inputs: run 5's five `wrfrst` at 01:15, copied for every member of every level (`insert` changes the file); each member's own 50-member pristine boundary file. With no analysis at 01:15 (and `insert` requiring matching times), the analysis is the extracted prior itself: zero increments, the same reads, writes and computation. The batch node (`cirrus59`) made all copies, also rewriting `dart_d01.nc` between the phases, as WRF and filter would on other nodes; the step node (`cirrus60`, a 512-GB node) ran k member chains side by side (`OMP_NUM_THREADS=1`), so it read every input from the file servers. No chain failed at any level.
+
+Phase wall times on the step node, and their sum per member ((prior + update) / k):
+
+| k | prior (s) | update (s) | s per member |
+|---|---|---|---|
+| 1 | 84 | 112 | 196 |
+| 2 | 102 | 154 | 128 |
+| 5 | 129 | 178 | 61 |
+| 10 | 195 | 251 | 45 |
+| 25 | 572 | 494 | 43 |
+
+Mean time of the four large steps (s); `qnrain` and the copies take 1–5 s:
+
+| k | extract | insert | extract start | refit |
+|---|---|---|---|---|
+| 1 | 81 | 31 | 47 | 30 |
+| 2 | 97 | 61 | 55 | 24 |
+| 5 | 120 | 75 | 66 | 29 |
+| 10 | 176 | 107 | 102 | 30 |
+| 25 | 426 | 183 | 194 | 30 |
+
+- k = 1 matches run 5 (prior ~85 s, update 97–147 s). Peak memory per step: `insert` 6.05 GB, `qnrain` 1.40, refit 1.00, `extract` 0.21; at k = 25 the node's available memory fell from ~455 to 314 GB. The node's CPUs were at most 10 % busy (k = 25) and 1–2 % at k = 1: the steps wait on file I/O, not on computation. The refit doesn't slow; `insert` and the extractions do. A node's throughput levels off near k = 10 (45 s per member, ~4.4 × one member alone); k = 25 adds nothing (43 s) and spreads the extraction over 200–569 s.
+- One node measured: whether the slowdown with k comes from the node's own I/O or from the file servers, and how 40–50 nodes doing this at once load the servers, B3 shows.
+- For B2 (arithmetic from these numbers): (a) in a 40-node filter job, 50 members over 40 nodes (≤ 2 per node) add ~102 + ~154 ≈ 255 s to each cycle, ~196 s with ≥ 50 nodes (1 per node); 40 nodes × 255 s ≈ 2.8 node-hours per cycle, nearly all idle. (b) packed into a separate job: 5 nodes × 10 members ≈ 446 s and 0.6 node-hours, 10 nodes × 5 ≈ 307 s and 0.85 node-hours, but a third job per cycle with its own queue wait. (c) inside each 2-node WRF member job: +196 s per member with one of its nodes idle, ~5.4 node-hours per cycle, and each wave of 40 members 196 s longer. The extractions are the largest item (81 + 47 of 196 s alone), I/O-bound at 0.2 GB and ~1 core; a profile of `wrfrst_dart.py extract` (time reading vs writing; netCDF's default fill mode, which writes fill values into a new classic file before its data, would double the writes) might shorten every option.
+- **Extraction profiled and fixed (2026-11-08, login node, run 5 member 1's 01:15 `wrfrst`).** Of 72.8 s for a prior extraction, 68.5 s went to `createVariable`, reading took 1.9 s and writing 2.4 s. `extract` defined each variable just before writing its data, and in a classic (netCDF-3) file every variable defined after data have been written makes netCDF rewrite the record data written so far: `createVariable` took 0.9 s for the second variable and 5.7 s for the 24th. Not fill mode. Fix: all variables defined first, then the data written (fill mode kept on: with it off, the padding byte after `Times` holds whatever was in memory, so files with the same data could differ; on costs ~2 s). Output byte-identical to the old code's for the prior with `DART_EXTRA` (members 1 and 3), `start_d01.nc` (no extra fields) and a `wrfinput` (50-member member 1). Login node: prior 80.5 → 7.6 s, `start_d01.nc` 44.8 → 3.9 s, `wrfinput` 45.5 → 5.7 s; memory unchanged (0.22 GB; 0.67 GB from a `wrfinput`). One member alone now needs ~80 s of serial steps instead of ~196 s (prior phase ~11 s, update ~69 s; extraction times from the login node, where the old code took 80.5 s against 80.7 s on the compute node), mostly `insert` (31 s) and the refit (30 s). The k-levels above were measured with the old `extract`; how the fixed one packs is not yet measured. `build_member_bdy.py` (`write_state`) writes its classic files the same way (part of A6's 65–70 s per record, perhaps); A6 is done, so left as it is.
 
 **C3. Filter gate at 50 members:** time and memory on 40 and ~80 nodes (`tasks_per_node` matching the ranks per node). Run 5's filter used 1.9 GB per task on 40 × 32 and 63–94 s in the observation loop for ~95,000 observations at 5 members; the loop grows about in proportion to the ensemble size.
 

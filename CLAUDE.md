@@ -166,6 +166,11 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   a script that keeps many netCDF-4 files open, or reads all variables of a wrfbdy, can reach tens of GB: open
   one file at a time and use `set_var_chunk_cache(size=0)` where chunks are read once (2026-11-07,
   `notes/fulltest_steps.md` A5/A6).
+- **Writing a classic (netCDF-3) file: define every variable before writing any data.** Each variable defined
+  after data makes netCDF rewrite the record data written so far; `wrfrst_dart.py extract` spent 69 of 73 s
+  that way, 7.6 s after the fix (2026-11-08, `notes/fulltest_steps.md` C2). Keep fill mode on, so padding bytes
+  are deterministic. `build_member_bdy.py` (`write_state`) still has the old pattern. netCDF-4 files don't have
+  this problem.
 - The user's shell aliases `ls` with `-F`, so `ls` output has `@`/`*` suffixes. Use `find` or
   `command ls` in scripts. This once created dozens of broken symlinks.
 - Claude Code replays a shell snapshot taken at session start, so `~/.bashrc` edits do not apply

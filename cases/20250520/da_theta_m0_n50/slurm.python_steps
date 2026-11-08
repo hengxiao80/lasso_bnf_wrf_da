@@ -1,0 +1,180 @@
+#!/bin/bash
+# C2 (notes/fulltest_steps.md C2): the per-member serial steps of a cycle, timed one by one, with k members side by
+# side on one node (k = LEVELS, default 1 2 5 10 25), to settle where they run in the 50-member jobs (B2).
+#
+# Steps per member, as in the cycle scripts (same programs and options; HYDROSTATIC_PH=1, one-pass MRMS run):
+#   prior  (prep_filter.sh): wrfrst_dart.py extract of the wrfrst with DART_EXTRA -> dart_d01.nc; cp -> prior_d01.nc
+#   update (post_filter.sh member): wrfrst_dart.py qnrain; cp -> analysis_d01.nc; wrfrst_dart.py insert of the
+#          11 UPDATE fields with --hydrostatic-ph --prior into the wrfrst; extract -> start_d01.nc;
+#          refit_member_bdy.sh with 2 records (subset_bdy.py, update_wrf_bc); cp of the refit file and its log.
+# Inputs: run 5 _conv_refl_f2's five wrfrst files at 01:15 (da_theta_m0_n5/run_conv_refl_f2/memNNN; member i of a
+# level uses run 5 member (i-1) % 5 + 1), copied for each member of each level (insert changes the file), and the
+# 50-member pristine boundary files bdy/wrfbdy_d01_memNNN (member i reads its own, read only). No analysis exists at
+# 01:15, and insert needs the analysis's time to match the restart's, so the "analysis" is the extracted prior
+# itself: zero increments, but the same reads, writes and computation as a real update.
+# Nodes: the batch node (the first) makes the copies, before the prior steps (the wrfrst files) and between the two
+# phases (cp prior_d01.nc -> dart_d01.nc), standing in for WRF and filter writing these files on other nodes; the
+# second node runs the steps (one srun step per phase, k member chains as background processes,
+# OMP_NUM_THREADS=1), so it reads every input from the file servers, as a cycle does, not from its own cache.
+# Per level: each step's wall time and peak memory (/usr/bin/time) per member; each phase's wall time; the
+# second node's available memory and CPU use, sampled every 5 s. Guards from level 1's measurement: a level is
+# skipped if k x level 1's largest step memory > 200 GB (nodes have 256 GB), and the remaining levels are skipped
+# once a level's update phase takes more than 3 x level 1's. Each level's large files are deleted after its
+# summary; times and samples stay in tests/python_steps/<job>/k<k>/.
+#   sbatch slurm.python_steps
+#   LEVELS="1 2 10" sbatch slurm.python_steps
+# Limit: in run 5 (one member per node) the prior steps took ~85 s and the update steps 97-147 s per member; a cp of
+# a 13.3-GB wrfrst took ~4 s (hcoll test, job 1054907). Without any slowdown the five levels take ~5 min each plus
+# the copies (43 wrfrst copies, 572 GB) ~25-30 min; 1.5 h allows level 25 to run ~7 x slower than level 1, more
+# than the 3 x guard lets the earlier levels be.
+#SBATCH --job-name=pysteps520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:30:00
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=128
+#SBATCH --output=logs/slurm.python_steps.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh
+SELF=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/slurm.python_steps
+source ${EXP_SH}
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # log, DART_EXTRA
+source ${PROJECT_DIR}/scripts/env_wrf.sh > /dev/null 2>&1   # netCDF libraries for update_wrf_bc
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+FT=2025-05-20_01_15_00
+FIELDS="U V PH THM MU QVAPOR QCLOUD QRAIN QSNOW QGRAUP QNRAIN"
+export OMP_NUM_THREADS=1
+
+# timed <dir> <step> <command...>: runs the command, appends "<step> <seconds> <peak kB> <status>" to <dir>/times.txt
+timed() {
+   local d=$1 step=$2; shift 2
+   /usr/bin/time -f '%e %M' -o "${d}/.time" "$@" >> "${d}/steps.log" 2>&1
+   local rc=$?
+   echo "${step} $(cat "${d}/.time" | tail -n 1) ${rc}" >> "${d}/times.txt"
+   return ${rc}
+}
+
+# sampler <file>: every 5 s, epoch, MemAvailable (GB) and CPU busy fraction of this node, until killed
+sampler() {
+   local prev=($(head -n 1 /proc/stat)) cur busy total
+   while sleep 5; do
+      cur=($(head -n 1 /proc/stat))
+      total=0; for x in 1 2 3 4 5 6 7 8; do total=$((total + cur[x] - prev[x])); done
+      busy=$((total - (cur[4] - prev[4]) - (cur[5] - prev[5])))
+      echo "$(date +%s) $(awk '/MemAvailable/ {printf "%.1f", $2 / 1048576}' /proc/meminfo)" \
+           "$(awk -v b=${busy} -v t=${total} 'BEGIN {printf "%.3f", (t > 0 ? b / t : 0)}')" >> "$1"
+      prev=("${cur[@]}")
+   done
+}
+
+# --- phase mode: runs on the second node, k member chains side by side -----------------------------------------
+if [ "${1:-}" = phase ]; then
+   phase=$2 L=$3 k=$4
+   sampler "${L}/sampler_${phase}.txt" &
+   spid=$!
+   pids=()
+   for i in $(seq 1 ${k}); do
+      d=${L}/m${i}
+      if [ "${phase}" = prior ]; then
+         ( timed ${d} extract ${PY} ${DA}/wrfrst_dart.py extract ${d}/wrfrst_d01_${FT} ${d}/dart_d01.nc \
+              --extra ${DART_EXTRA} \
+           && timed ${d} cp_prior cp ${d}/dart_d01.nc ${d}/prior_d01.nc ) &
+      else
+         m3=$(printf '%03d' ${i})
+         ( timed ${d} qnrain ${PY} ${DA}/wrfrst_dart.py qnrain ${d}/dart_d01.nc --prior ${d}/prior_d01.nc \
+           && timed ${d} cp_analysis cp ${d}/dart_d01.nc ${d}/analysis_d01.nc \
+           && timed ${d} insert ${PY} ${DA}/wrfrst_dart.py insert ${d}/dart_d01.nc ${d}/wrfrst_d01_${FT} \
+                 --fields ${FIELDS} --hydrostatic-ph --prior ${d}/prior_d01.nc \
+           && timed ${d} extract_start ${PY} ${DA}/wrfrst_dart.py extract ${d}/wrfrst_d01_${FT} ${d}/start_d01.nc \
+           && timed ${d} refit ${DA}/refit_member_bdy.sh ${d}/start_d01.nc ${BDY_DIR}/wrfbdy_d01_mem${m3} ${d}/bdy 2 \
+           && mkdir -p ${d}/out \
+           && timed ${d} cp_bdy cp ${d}/bdy/wrfbdy_d01 ${d}/bdy/update_wrf_bc.log ${d}/out/ ) &
+      fi
+      pids+=($!)
+   done
+   nfail=0
+   for p in "${pids[@]}"; do wait ${p} || nfail=$((nfail + 1)); done
+   kill ${spid} 2> /dev/null
+   echo "phase ${phase}, k = ${k}: ${nfail} member chains failed"
+   exit ${nfail}
+fi
+
+# --- driver: on the batch node ----------------------------------------------------------------------------------
+LEVELS=${LEVELS:-1 2 5 10 25}
+G=${EXP_DIR}/tests/python_steps/${SLURM_JOB_ID}
+NODE_A=$(hostname -s)
+NODE_B=$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | grep -vx "${NODE_A}" | head -n 1)
+SRC=${CASE_DIR}/da_theta_m0_n5/run_conv_refl_f2
+date
+echo "copies on ${NODE_A}, steps on ${NODE_B}; levels: ${LEVELS}; OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+lscpu | grep -E 'Model name|^CPU\(s\)'
+for s in 1 2 3 4 5; do [ -f ${SRC}/mem00${s}/wrfrst_d01_${FT} ] || { echo "missing ${SRC}/mem00${s}/wrfrst_d01_${FT}"; exit 1; }; done
+
+# summary <L> <k>: per step mean/min/max seconds and peak memory over the members; phase walls; node samples
+summary() {
+   local L=$1 k=$2
+   echo "--- k = ${k}: phase walls prior $(cat ${L}/wall_prior.txt) s, update $(cat ${L}/wall_update.txt) s"
+   cat ${L}/m*/times.txt | awk '{n[$1]++; s[$1]+=$2; if (!($1 in mn) || $2 < mn[$1]) mn[$1]=$2;
+        if ($2 > mx[$1]) mx[$1]=$2; if ($3 > mem[$1]) mem[$1]=$3; if ($4 != 0) bad[$1]++}
+        END {printf "   %-14s %3s %8s %8s %8s %9s %5s\n", "step", "n", "mean s", "min s", "max s", "peak GB", "fail";
+             split("extract cp_prior qnrain cp_analysis insert extract_start refit cp_bdy", o, " ");
+             for (j = 1; j <= 8; j++) { x = o[j]; if (x in n)
+                printf "   %-14s %3d %8.1f %8.1f %8.1f %9.2f %5d\n", x, n[x], s[x]/n[x], mn[x], mx[x], mem[x]/1048576, bad[x] }}'
+   for ph in prior update; do
+      [ -f ${L}/sampler_${ph}.txt ] && awk -v ph=${ph} '{if (NR == 1 || $2 < m) m = $2; c += $3; n++}
+         END {if (n) printf "   %s phase on the step node: min MemAvailable %.1f GB, mean CPU busy %.3f (fraction of all CPUs)\n", ph, m, c / n}' \
+         ${L}/sampler_${ph}.txt
+   done
+}
+
+k1_mem_kb= k1_update= stop=
+for k in ${LEVELS}; do
+   if [ -n "${stop}" ]; then echo "=== k = ${k}: skipped (${stop})"; continue; fi
+   if [ -n "${k1_mem_kb}" ] && [ $((k * k1_mem_kb)) -gt $((200 * 1048576)) ]; then
+      echo "=== k = ${k}: skipped, ${k} x $((k1_mem_kb / 1024)) MB (level 1's largest step) > 200 GB"; continue
+   fi
+   L=${G}/k${k}
+   log "=== k = ${k}: copying ${k} wrfrst files on ${NODE_A}"
+   SECONDS=0
+   pids=()
+   for i in $(seq 1 ${k}); do
+      mkdir -p ${L}/m${i}
+      cp ${SRC}/mem00$(( (i - 1) % 5 + 1 ))/wrfrst_d01_${FT} ${L}/m${i}/ & pids+=($!)
+   done
+   for p in "${pids[@]}"; do wait ${p} || { echo "copy failed"; exit 1; }; done
+   log "k = ${k}: copies done in ${SECONDS} s"
+   for phase in prior update; do
+      if [ ${phase} = update ]; then
+         SECONDS=0
+         pids=()
+         for i in $(seq 1 ${k}); do cp ${L}/m${i}/prior_d01.nc ${L}/m${i}/dart_d01.nc & pids+=($!); done
+         for p in "${pids[@]}"; do wait ${p} || { echo "copy failed"; exit 1; }; done
+         log "k = ${k}: analysis files rewritten on ${NODE_A} in ${SECONDS} s"
+      fi
+      SECONDS=0
+      srun -N 1 -n 1 -c 128 -w ${NODE_B} --exact bash ${SELF} phase ${phase} ${L} ${k}
+      rc=$?
+      echo ${SECONDS} > ${L}/wall_${phase}.txt
+      log "k = ${k}: ${phase} phase ${SECONDS} s, status ${rc}"
+      if [ ${rc} != 0 ]; then
+         for i in $(seq 1 ${k}); do
+            grep -q ' [1-9][0-9]*$' ${L}/m${i}/times.txt 2> /dev/null && { echo "member ${i}:"; tail -n 20 ${L}/m${i}/steps.log; }
+         done
+         stop="k = ${k} failed"; break
+      fi
+   done
+   summary ${L} ${k}
+   if [ ${k} = 1 ] && [ -z "${stop}" ]; then
+      k1_mem_kb=$(awk '$3 > m {m = $3} END {print m}' ${L}/m1/times.txt)
+      k1_update=$(cat ${L}/wall_update.txt)
+   elif [ -n "${k1_update}" ] && [ -z "${stop}" ] && [ $(cat ${L}/wall_update.txt) -gt $((3 * k1_update)) ]; then
+      stop="k = ${k}'s update phase took more than 3 x k = 1's"
+   fi
+   find ${L} \( -name 'wrfrst_d01_*' -o -name '*.nc' -o -name 'wrfbdy_d01' \) -type f -delete
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%12,Elapsed,NNodes,MaxRSS,State

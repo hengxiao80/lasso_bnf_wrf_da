@@ -79,6 +79,11 @@ def extract(rst_path, out_path, extra):
         names["T"] = "THM" + level
         tmp = out_path + ".tmp"
         with netCDF4.Dataset(tmp, "w", format="NETCDF3_64BIT_OFFSET") as out:
+            # All variables are defined before any data are written: in a classic file, each variable
+            # defined after data makes netCDF rewrite the record data written so far (69 of 73 s for a
+            # prior extraction, one variable at a time; ~6 s this way, byte-identical; 2026-11-08,
+            # notes/fulltest_steps.md C2). Fill mode stays on (~2 s): with it off, the padding byte after
+            # Times would hold whatever was in memory, so files with the same data could differ.
             out.setncatts({a: rst.getncattr(a) for a in rst.ncattrs()})
             dims = set()
             for src in names.values():
@@ -88,7 +93,8 @@ def extract(rst_path, out_path, extra):
             for name, src in names.items():
                 v = out.createVariable(name, rst[src].dtype, rst[src].dimensions)
                 v.setncatts({a: rst[src].getncattr(a) for a in rst[src].ncattrs()})
-                v[:] = rst[src][:]
+            for name, src in names.items():
+                out[name][:] = rst[src][:]
     os.replace(tmp, out_path)
 
 
