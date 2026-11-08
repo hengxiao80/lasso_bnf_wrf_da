@@ -1,0 +1,127 @@
+#!/bin/bash
+# C1 (notes/fulltest_steps.md C1): one member's 15-min WRF restart segment on 2 or 4 nodes (8 nodes: the B1 test,
+# job 1194826). The segment of the B1 test: run 5 _conv_refl_f2 member 001 (da_theta_m0_n5) from 01:15 to 01:30,
+# its wrfrst at 01:15 and its 01:00 refit wrfbdy read in place, with the 50-member namelist (write_hist_at_0h_rst,
+# default history stream). 16 ranks x 8 threads per node, as the 8-node members (16 x 8 ranks); the decomposition
+# is the squarest patch for the 550 x 390 grid: 2 nodes 8 x 4 (patches ~69 x 98), 4 nodes 8 x 8 (~69 x 49).
+# WRF_REPEATS runs (default 2: the 8-node integration varied 69-78 s between runs) on the same nodes, each through
+# run_wrf_segment.sh with its exit guard, hcoll on, slurm.cycle's environment. The Thompson tables of the B1 test's
+# run directory are copied into each run directory first, as a cycling member's run/memNNN/wrf/ has them from the
+# cold start on (WRF computes them otherwise, ~3 s or more).
+# Reports per run: wall time, node-seconds, the phases from rsl.error.0000, memory per rank (sacct); repeats
+# against the first (cmp of wrfout and wrfrst at 01:30, i.e. reproducible at that decomposition). wrfout and
+# wrfrst deleted after the comparison; rsl files, namelist and logs kept in tests/wrf_nodes/<job>_N<n>/.
+# On 2 nodes only, first the compute-node sbatch test (fulltest_steps.md B2): from its batch node, the job submits a
+# 1-node, 1-minute job (sbtest520, --dependency=afterany on this job, as a cycle chain would) that prints its
+# host; the submission's result goes to this log, the test job's output to tests/wrf_nodes/<job>_N2/.
+#   sbatch -N 2 slurm.wrf_nodes
+#   sbatch -N 4 slurm.wrf_nodes
+# Limit: on 8 nodes a segment took 128-138 s (B1 test), of which ~50 s start-up and writes (the same at any node
+# count) and 69-78 s integration. If the integration time scaled with 1/nodes, a 2-node segment would take
+# ~50 + 4 x 78 = 362 s, two of them ~12 min, and 4 nodes ~7 min; how it scales below 8 nodes is not measured.
+# 45 min allows the 2-node segments to take nearly twice that.
+#SBATCH --job-name=wnodes520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:45:00
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=logs/slurm.wrf_nodes.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh
+source ${EXP_SH}
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # log
+DA=${PROJECT_DIR}/scripts/da
+N=${SLURM_NNODES}
+case ${N} in
+   2) NPX=8;  NPY=4 ;;
+   4) NPX=8;  NPY=8 ;;
+   8) NPX=16; NPY=8 ;;
+   *) echo "slurm.wrf_nodes: no decomposition for ${N} nodes"; exit 1 ;;
+esac
+REPEATS=${WRF_REPEATS:-2}
+SRC=${CASE_DIR}/da_theta_m0_n5/run_conv_refl_f2/mem001
+START=2025-05-20_01:15:00
+END_FT=2025-05-20_01_30_00
+RST=${SRC}/wrfrst_d01_2025-05-20_01_15_00
+BDY=${SRC}/bdy/wrfbdy_d01
+TABLES=${EXP_DIR}/tests/b1_output/1194826/new
+G=${EXP_DIR}/tests/wrf_nodes/${SLURM_JOB_ID}_N${N}
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+echo "nodes: ${SLURM_JOB_NODELIST} (${N}); ${NPX} x ${NPY} ranks x ${OMP_NUM_THREADS} threads; ${REPEATS} repeats"
+for f in ${RST} ${BDY} ${TABLES}/freezeH2O.dat ${TABLES}/qr_acr_qg_V4.dat ${TABLES}/qr_acr_qsV2.dat; do
+   [ -f ${f} ] || { echo "missing ${f}"; exit 1; }
+done
+mkdir -p ${G}
+
+if [ ${N} = 2 ]; then
+   out=$(sbatch --parsable -A cli120 -p batch_all -N 1 -t 00:01:00 -J sbtest520 \
+         --dependency=afterany:${SLURM_JOB_ID} -o ${G}/sbatch_test.%j.out \
+         --wrap 'echo "sbatch test job ${SLURM_JOB_ID}: running on $(hostname) at $(date)"' 2>&1)
+   rc=$?
+   log "sbatch test from $(hostname) (job ${SLURM_JOB_ID}): status ${rc}, output: ${out}"
+fi
+
+# wrf_timing <rsl.error.0000>: start-up, first step, integration, steps, wrfout writes (number, s), restart write (s)
+wrf_timing() {
+   awk '/Timing for processing (restart file|lateral boundary)/ {init += $(NF-2)}
+        /Timing for main/ {integ += $(NF-2); n++; if (n == 1) first = $(NF-2)}
+        /Timing for Writing wrfout/ {wo += $(NF-2); nwo++}
+        /Timing for Writing restart/ {rs += $(NF-2)}
+        END {printf "%6.1f %6.1f %6.1f %5d %3d %6.1f %6.1f", init, first, integ, n, nwo, wo, rs}' "$1"
+}
+
+for i in $(seq 1 ${REPEATS}); do
+   d=${G}/rep${i}
+   mkdir -p ${d}
+   cp ${TABLES}/freezeH2O.dat ${TABLES}/qr_acr_qg_V4.dat ${TABLES}/qr_acr_qsV2.dat ${d}/
+   log "=== repeat ${i}"
+   SECONDS=0
+   SRUN_OPTS="-N ${N} --ntasks-per-node=16 -c 8 --exact" RESTART=.true. RESTART_INTERVAL=15 \
+      ${DA}/run_wrf_segment.sh ${EXP_SH} ${d} ${START} 900 ${RST} ${BDY} ${NPX} ${NPY} > ${d}/segment.log 2>&1
+   rc=$?
+   echo ${SECONDS} > ${d}/wall_s.txt
+   grep -v 'starting wrf task' ${d}/segment.log
+   log "repeat ${i}: status ${rc}, ${SECONDS} s$([ ! -f ${d}/wrf_exit_guard.txt ] || echo ' (exit guard fired)')"
+   [ ${rc} = 0 ] || { echo "segment failed, see ${d}"; exit 1; }
+   if grep -q 'Writing qr_acr\|Writing freezeH2O' ${d}/rsl.error.0000; then
+      echo "repeat ${i}: WRF recomputed the Thompson tables"
+   fi
+   if [ ${i} -gt 1 ]; then
+      : > ${d}/compare.txt
+      for f in wrfout_d01_${END_FT} wrfrst_d01_${END_FT}; do
+         cmp -s ${G}/rep1/${f} ${d}/${f} && r=identical || r=differs
+         echo "${f}: ${r}" >> ${d}/compare.txt
+      done
+      echo "against repeat 1:"; cat ${d}/compare.txt
+      rm -f ${d}/wrfout_d01_* ${d}/wrfrst_d01_*
+   fi
+done
+rm -f ${G}/rep1/wrfout_d01_* ${G}/rep1/wrfrst_d01_* ${G}/rep*/freezeH2O.dat ${G}/rep*/qr_acr_*.dat
+
+echo
+echo "=== summary (${N} nodes, ${NPX} x ${NPY} ranks x ${OMP_NUM_THREADS} threads; s; node-s = wall x nodes)"
+printf '%-6s %6s %7s %6s %6s %6s %5s %3s %6s %6s  %s\n' repeat wall node-s start step1 integ steps nwo wrfout rst \
+   'vs repeat 1 (wrfout, wrfrst)'
+for i in $(seq 1 ${REPEATS}); do
+   d=${G}/rep${i}
+   w=$(cat ${d}/wall_s.txt)
+   cmpres=$( [ ${i} = 1 ] && echo reference || awk '{printf "%s ", $2}' ${d}/compare.txt 2> /dev/null)
+   printf '%-6s %6s %7s %s  %s\n' ${i} ${w} $((w * N)) "$(wrf_timing ${d}/rsl.error.0000)" "${cmpres}"
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%24,Elapsed,NNodes,NTasks,MaxRSS,AveRSS,State
