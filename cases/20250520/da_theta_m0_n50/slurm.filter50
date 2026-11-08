@@ -1,0 +1,148 @@
+#!/bin/bash
+# C3 (notes/fulltest_steps.md C3): filter with 50 members, time and memory, on the job's nodes x FILTER_TASKS_PER_NODE
+# ranks (experiment.sh, default 32), without WRF. One layout per job; at most 80 nodes in use at a time (user,
+# 2026-11-07), so the 80-node job waits for the 40-node one:
+#   j=$(sbatch --parsable -N 40 slurm.filter50); sbatch -N 80 --dependency=afterany:${j} slurm.filter50
+# Case: run 5 _conv_refl_f2's first analysis (05-20 00:15, one pass), with this experiment's input.nml.filter_joint
+# (ens_size 50, all 50 members' output files). Priors: run 5's five prior_d01.nc at 00:15, each used 10 times (member
+# i = run 5 member (i-1) % 5 + 1): 5 distinct states, but filter does the same work per observation and member as
+# with 50 distinct ones, and its outlier test follows run 5's spreads. (The 50 initial members have REFL_10CM = 0, so
+# the radar observations, ~90 % of the ~93,000, would see no prior spread; real 50-member priors at 00:15 need the
+# cold start, which B3 runs.) Observations run 5's obs_seq.joint at 00:15; prior inflation run 5's input files at
+# 00:15 (fill_inflation_restart: 1.0, sd 0.6); the impact table; GRID_FILE; the sampling-error table.
+# Filter runs through run_filter (cycle_lib.sh: hcoll off, exit guard), with the cycle's srun options and
+# slurm.cycle's job shape and environment.
+# Reports: the input.nml against run 5's (only ens_size, num_output_*_members and tasks_per_node may differ); wall
+# time and filter.log's phases (read / H(x) / assimilation / rest); MaxRSS per task (sacct); sizes of the outputs;
+# obs_seq.final's size, and the time and memory check_filter_gate.py's reader takes on it (check_cycle.py reads it
+# the same way); QC counts per type. The analyses against those of the other layout, if it has run (cmp per member).
+# Files kept in tests/filter50/<nodes>x<ranks>/ until reviewed.
+# Limit: run 5's filter at 00:15 on 40 x 32 took 133 s (read 8, H(x) 10, observation loop 63 s for 93,094 obs, rest
+# 45) with 5 members, 1.91 GB per task. If every part grows with the ensemble size, 50 members take ~22 min on 40
+# nodes; less on 80 nodes if the loop keeps scaling with ranks (the pilot's scaling test: 8 x 16 -> 40 x 32, 97 -> 10 s
+# for the conventional loop). Copies of the priors (50 x 1.67 GB), the reader and the comparison add a few minutes.
+# 1 h leaves room for parts that grow faster than the ensemble size; memory per task at 50 members is not known.
+#SBATCH --job-name=filt50
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:00:00
+#SBATCH --nodes=40
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=logs/slurm.filter50.%j.out
+#SBATCH --exclusive
+
+source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0_n50/config/experiment.sh
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # run_filter, log
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+NMEM=50
+T=202505200015
+RUN5=${CASE_DIR}/da_theta_m0_n5/output_conv_refl_f2/${T}
+NODES=${SLURM_NNODES}
+TPN=${FILTER_TASKS_PER_NODE}
+G=${EXP_DIR}/tests/filter50
+D=${G}/${NODES}x${TPN}
+NML=${CONFIG_DIR}/input.nml.filter_joint
+OBS=${EXP_DIR}/obs_meso_a_calmkeep_mrms/${T}/obs_seq.joint
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+echo "filter on ${NODES} nodes x ${TPN} ranks; nodes ${SLURM_JOB_NODELIST}"
+[ "$(readlink -f ${OBS})" = "$(readlink -f "$(cat ${RUN5}/filter/obs_seq.out.path)")" ] \
+   || { echo "${OBS} is not run 5's observation file"; exit 1; }
+for s in 1 2 3 4 5; do [ -s ${RUN5}/mem00${s}/prior_d01.nc ] || { echo "no ${RUN5}/mem00${s}/prior_d01.nc"; exit 1; }; done
+rm -rf ${D}
+mkdir -p ${D}
+cd ${D}
+
+# input.nml as prep_filter.sh writes it
+sed "s/tasks_per_node = 16/tasks_per_node = ${TPN}/" ${NML} > input.nml
+sed -i -e "s/^\(   inf_damping *= *\)[0-9.]*,/\1${INF_DAMPING},/" -e "s/^\(   inf_flavor *= *\)[0-9]*,/\1${INF_FLAVOR},/" \
+       -e "s/^\(   inf_sd_lower_bound *= *\)[0-9.]*,/\1${INF_SD_LOWER_BOUND},/" input.nml
+grep -q "tasks_per_node = ${TPN}\$" input.nml || { echo "tasks_per_node not set"; exit 1; }
+echo "input.nml against run 5's at ${T} (comments and blank lines ignored):"
+diff <(sed -e 's/!.*//' -e 's/^#.*//' -e '/^ *$/d' ${RUN5}/filter/input.nml) <(sed -e 's/!.*//' -e 's/^#.*//' -e '/^ *$/d' input.nml)
+ln -s ${GRID_FILE} wrfinput_d01
+ln -s ${SEC_TABLE} sampling_error_correction_table.nc
+ln -s ${OBS} obs_seq.out
+imp=$(sed -n "s/^ *obs_impact_filename *= *'\([^']*\)'.*/\1/p" input.nml)
+cp ${CONFIG_DIR}/${imp} . || { echo "no impact table '${imp}'"; exit 1; }
+cp ${RUN5}/filter/input_priorinf_{mean,sd}.nc .
+
+log "copying ${NMEM} priors"
+SECONDS=0
+: > input_list_d01.txt
+for i in $(seq 1 ${NMEM}); do
+   m=$(printf '%03d' ${i})
+   mkdir -p mem${m}
+   cp ${RUN5}/mem00$(( (i - 1) % 5 + 1 ))/prior_d01.nc mem${m}/dart_d01.nc &
+   echo ${D}/mem${m}/dart_d01.nc >> input_list_d01.txt
+done
+wait
+cp input_list_d01.txt output_list_d01.txt
+log "copies done in ${SECONDS} s"
+
+log "filter on ${NODES} x ${TPN} ranks"
+SECONDS=0
+run_filter ${D} -N ${NODES} -n $((NODES * TPN)) --ntasks-per-node=${TPN} -c 1 --exact
+rc=$?
+echo ${SECONDS} > wall_s.txt
+log "filter: status ${rc}, ${SECONDS} s$([ ! -f filter_exit_guard.txt ] || echo ' (exit guard fired)')"
+if [ ${rc} != 0 ]; then
+   echo "filter failed or did not finish, see ${D}/filter.log"; tail -30 filter.log
+   sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%12,Elapsed,NNodes,NTasks,MaxRSS,State
+   exit 1
+fi
+
+echo
+echo "=== phases (s)"
+${PY} - ${D} <<'EOF'
+import sys
+sys.path.insert(0, '/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/scripts/da')
+from summarize_cycle_timing import filter_phases
+d = sys.argv[1]
+p = filter_phases(f'{d}/filter.log')
+wall = open(f'{d}/wall_s.txt').read().strip()
+ms = f'{1000 * p["assim"] / p["nobs"]:.2f}' if p['nobs'] else '-'
+print(f'wall {wall}, read {p["read"]:.0f}, H(x) {p["hx"]:.0f}, assimilation {p["assim"]:.0f} '
+      f'({p["nobs"]} obs, {ms} ms/ob), rest {p["rest"]:.0f}')
+EOF
+
+echo
+echo "=== outputs (GB, disk)"
+for pat in 'mem*/dart_d01.nc' 'preassim_member_*.nc' 'postassim_member_*.nc' '*_mean.nc' '*_sd.nc' '*_priorinf_*.nc' obs_seq.final; do
+   printf '%-24s %4d files %8.1f\n' "${pat}" $(ls ${pat} 2> /dev/null | wc -l) \
+      $(du -cB1 ${pat} 2> /dev/null | tail -1 | awk '{print $1 / 1e9}')
+done
+echo "obs_seq.final: $(stat -c %s obs_seq.final) bytes"
+
+echo
+echo "=== obs_seq.final reader (check_filter_gate.py obs, as check_cycle.py reads it) and QC per type"
+OMP_NUM_THREADS=1 /usr/bin/time -f 'reader: %e s, max RSS %M kB' ${PY} ${DA}/check_filter_gate.py obs obs_seq.final
+
+for other in ${G}/*x*; do
+   [ "${other}" != "${D}" ] && [ -f ${other}/wall_s.txt ] || continue
+   echo
+   echo "=== analyses against $(basename ${other}) (cmp per member)"
+   ndiff=0
+   for i in $(seq 1 ${NMEM}); do
+      m=$(printf '%03d' ${i})
+      cmp -s ${other}/mem${m}/dart_d01.nc mem${m}/dart_d01.nc || { ndiff=$((ndiff + 1)); echo "member ${m} differs"; }
+   done
+   echo "${ndiff} of ${NMEM} members differ"
+   if [ ${ndiff} -gt 0 ]; then
+      ${PY} ${DA}/compare_dart_members.py ${other}/mem001/dart_d01.nc mem001/dart_d01.nc
+   fi
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%12,Elapsed,NNodes,NTasks,MaxRSS,State

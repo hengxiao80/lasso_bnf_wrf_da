@@ -167,7 +167,20 @@ Mean time of the four large steps (s):
 
 **C3. Filter gate at 50 members:** time and memory on 40 and ~80 nodes (`tasks_per_node` matching the ranks per node). Run 5's filter used 1.9 GB per task on 40 × 32 and 63–94 s in the observation loop for ~95,000 observations at 5 members; the loop grows about in proportion to the ensemble size.
 
-Then: filter nodes (C3; nodes per member decided after C1: 2, pending B3; at most 80 nodes at a time).
+- **40 × 32 done 2026-11-08** (`da_theta_m0_n50/slurm.filter50`, job 1195122, 3 min 25 s). No 50-member forecast exists yet, so the priors are a stand-in: run 5's five priors at 00:15 (its members' forecasts from the 00Z cold start), each used 10 times. Filter does the same work per observation and member as with 50 distinct members and writes files of the real size; the analyses are meaningless (5 distinct states), and the outlier test follows run 5's 5-member spreads. (The 50 initial members have `REFL_10CM` = 0, so the radar observations would see no prior spread; real 00:15 priors need the cold start, B3.) Run 5's 00:15 observations (`obs_seq.joint`, 93,094 obs), inflation and impact table; the 50-member `input.nml.filter_joint`, which differs from run 5's 00:15 `input.nml` only in `ens_size` and `num_output_*_members`. The 80-node layout was cancelled before it started (user: 80 nodes are rarely free at once; others hold ~55 of the 116).
+- Filter 187 s (run 5 at 00:15, 5 members: 133 s): read 10 (8), H(x) 10 (10), observation loop 89 s, 0.96 ms per ob (63 s, 0.7 ms), rest 68 (45). 1.99 GB per task (1.91), i.e. ~64 GB per node at 32 ranks. Ten times the members cost ~40 % more time: the assumption above, that the loop grows about in proportion to the ensemble size, was wrong (and with it the job's 22-min estimate). QC as in run 5: radar reflectivity 51,870 assimilated, 25,091 (33 %) rejected as outliers; clear-air 8,402 and 187.
+- Outputs, fresh (full nominal size on disk): the 50 analyses 83 GB, 50 preassim and 50 postassim member files 77 GB each, mean, sd and inflation files 35 GB; `obs_seq.final` 178 MB (44 MB with 5 members), read by `check_filter_gate.py`'s reader (as `check_cycle.py` reads it) in 5.5 s with 1.2 GB.
+- **20 nodes, 2026-11-08** (user; jobs 1195124 at 20 × 32 and 1195125 at 20 × 64, one after the other, same case): the analyses of all 50 members identical to the 40 × 32 ones (`cmp`), and the QC counts the same. Filter per layout (s; node-s = nodes × filter time):
+
+| layout | filter | loop | rest | GB/task | node-s |
+|---|---|---|---|---|---|
+| 40 × 32 | 187 | 89 | 68 | 1.99 | 7480 |
+| 20 × 32 | 298 | 187 | 80 | 2.09 | 5960 |
+| 20 × 64 | 295 | 98 | 161 | 1.99 | 5900 |
+
+- The observation loop scales with the number of ranks (1280 ranks: 89–98 s; 640: 187 s), whatever the nodes. The rest (writing ~240 GB of member, stage and inflation files, posterior H(x), `obs_seq.final`) depends on the nodes: 68 s on 40, 80–161 s on 20, slowest with 64 ranks per node. Read and H(x) take 7–19 s in every layout. So 64 ranks per node gain nothing over 32 on 20 nodes.
+- The filter job (option (a)) per cycle, from C2 and these numbers: 40 nodes ≈ 11 + 187 + 93 ≈ 290 s and ~3.2 node-hours; 20 nodes (2–3 members per node) ≈ 15 + 298 + 100 ≈ 410 s and ~2.3 node-hours: 20 nodes save ~0.9 node-hours per cycle (against ~8.6 for WRF) and make each cycle ~2 min longer (~4 h over the 120 cycles of the 30-h run); a 20-node job may also wait less in the queue.
+**Part C done 2026-11-08.** Decided (user): filter on 40 nodes × 32 ranks (`FILTER_NODES`, `FILTER_TASKS_PER_NODE` in `experiment.sh`; 20 nodes if queue waits grow); 2 nodes per WRF member, pending B3; at most 80 nodes at a time. The test outputs of C3 (732 GB) deleted.
 
 ### Part D: gated runs
 
@@ -200,4 +213,5 @@ Each run is a production run: the user's go-ahead before it, even after a succes
 - **2026-11-06 (user):** the scope in Sec. 0; the retention in `fulltest_output_files.md` Sec. 1; the `GRID_FILE` clean-up before the members (A4); 1 + 4 kept for the full test, 1 + 9 moved into the separate work package (Q18 had planned 1 + 9 for the 50-member DA); the directory layout of A1 (`da_common_theta_m0/`, `da_theta_m0_n5/` with the link `da_theta_m0`, `da_theta_m0_n50/`), with the shared inputs linked into each new experiment.
 - **2026-11-06 (user, A2):** the configs that make the shared inputs (`namelist.input.real`, `namelist.input.3dvar`, `input.nml.obs_preprocess`) live in `da_common_theta_m0/config/`, linked into each experiment's `config/`, rather than as copies per experiment.
 - **2026-11-07 (user):** A6 option A with 2-record cycle copies; A7 moved after Part A. B3 is a throwaway test at full size; D1 starts fresh from 00Z rather than continuing B3's cycles. After C1: 2 nodes per WRF member, pending B3; no 1-node test; at most 80 nodes in use at a time by the full test's jobs; no `wrf.exe` comparison across the `Core/A100` change.
+- **2026-11-08 (user), after C3:** filter on 40 × 32 for the full test (20 × 32 if queue waits grow); no 80-node test (80 nodes rarely free at once).
 - **2026-11-08 (user):** `wrfrst_dart.py extract` fixed (variables defined before data; byte-identical, ~10× faster); `insert` left as it is; the per-member steps run in the filter job (C2 option (a)).
