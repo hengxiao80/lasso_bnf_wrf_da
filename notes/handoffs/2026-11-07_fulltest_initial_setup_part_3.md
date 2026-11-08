@@ -38,7 +38,7 @@ Written into `fulltest_steps.md` B2, C1, C2 and Sec. 0 Layout (user agreed to re
 ## Working rules
 
 - **No quantitative guesses** (times, memory, data volumes, job limits): derive from a measured run of the same script, show the basis, or say "unknown" and measure first. Never put a guessed number into a script (project memory `no-unfounded-estimates`; the A6 check's guessed 2-h limit wasted a run).
-- **Status lines before tool calls are full sentences** that say what is done, on what and why (shared rule `~/.claude/rules/answer-style.md`, updated in `claude_config` commit `5b56b81`, not pushed).
+- **Status lines before tool calls are full sentences** that say what is done, on what and why (shared rule `~/.claude/rules/answer-style.md`, updated in `claude_config` commit `1ea0622`, pushed).
 - Jobs: the user's go-ahead before every `sbatch`; one step at a time; report each result. Commits only after the user has reviewed and said so; on `main`, only the session's own files; push only when asked.
 - Don't change files a running job uses. Notes per `~/.claude/rules/typora-markdown.md` (no hard-wrapped prose; editing a hard-wrapped note means unwrapping all its prose, as done for `obs_expansion.md`). No LaTeX in chat.
 - Environment: `source scripts/env_wrf.sh` before DART or WRF tools; Python is `.venv/bin/python`; `ls` is aliased with `-F` (use `command ls` or `find`).
