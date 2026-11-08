@@ -58,6 +58,20 @@ def write_member(mean_path, pert_path, out_path, hydrostatic_ph):
     return nclip, info, dph_rms
 
 
+def member_std(files, name, base):
+    """Std over the files (ddof 1) of field `name`, from the sums of d and d^2 over the files, d = field - base,
+    one file in memory at a time (since 2026-11-06, for 50 members). base is the mean state for the member
+    files and 0 for the centered perturbations, so the sum of d is small and the sums lose no precision."""
+    s1 = s2 = 0.0
+    for p in files:
+        with netCDF4.Dataset(p) as ds:
+            d = np.asarray(ds[name][0], np.float64) - base
+        s1 = s1 + d
+        s2 = s2 + d * d
+    n = len(files)
+    return np.sqrt(np.maximum(s2 - s1 * s1 / n, 0.0) / (n - 1))
+
+
 def spread_by_level(paths, mean_path, pert_paths):
     """Ensemble std by level from the member files, and from the perturbation files."""
     with netCDF4.Dataset(mean_path) as mean:
@@ -65,11 +79,11 @@ def spread_by_level(paths, mean_path, pert_paths):
     print("ensemble spread (std over members, RMS over the horizontal): members | perturbation files")
     levels = [0, 5, 10, 20, 40, 60, 80, 100, 120, nlev - 1]
     for name in FIELDS:
-        mem = np.array([np.asarray(netCDF4.Dataset(p)[name][0], np.float64) for p in paths])
-        prt = np.array([np.asarray(netCDF4.Dataset(p)[name][0], np.float64) for p in pert_paths])
-        sm = np.sqrt(mem.var(axis=0, ddof=1))
-        sp = np.sqrt(prt.var(axis=0, ddof=1))
-        if mem.ndim == 3:
+        with netCDF4.Dataset(mean_path) as mean:
+            base = np.asarray(mean[name][0], np.float64)
+        sm = member_std(paths, name, base)
+        sp = member_std(pert_paths, name, 0.0)
+        if sm.ndim == 2:   # MU
             print(f"   {name:7s} {np.sqrt((sm ** 2).mean()):9.3g} | {np.sqrt((sp ** 2).mean()):9.3g}")
             continue
         rm = np.sqrt((sm ** 2).mean(axis=(1, 2)))

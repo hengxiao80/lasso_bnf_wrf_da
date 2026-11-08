@@ -36,40 +36,54 @@ def main():
     picked = [int(d) for d in rng.choice(draws, size=args.nmem, replace=False)]
     center = not args.no_center
 
-    srcs = [netCDF4.Dataset(os.path.join(bank_dir, f"pert_bank_{d:03d}.nc")) for d in picked]
+    # Memory (since 2026-11-06, for 50 members): one bank file and one member file open at a time (with all
+    # files open, their HDF5 chunk caches took 26 GB at 50 members) and one field of one member in memory,
+    # besides the mean and the centering check of each field (~2 GB). The mean is summed member by member, in
+    # the order numpy's stack.mean(axis=0) adds them, so the files are the same as from the earlier
+    # all-in-memory version (checked on the pilot's 5 members).
+    bank = [os.path.join(bank_dir, f"pert_bank_{d:03d}.nc") for d in picked]
     out_dir = os.path.join(args.perts_dir, "members")
     os.makedirs(out_dir, exist_ok=True)
-    outs = []
-    for m, (d, src) in enumerate(zip(picked, srcs), start=1):
-        path = os.path.join(out_dir, f"pert_mem{m:03d}.nc")
-        out = netCDF4.Dataset(path + ".tmp", "w", format="NETCDF4")
-        for name, dim in src.dimensions.items():
-            out.createDimension(name, len(dim))
-        out.createVariable("Times", src["Times"].dtype, src["Times"].dimensions)[:] = src["Times"][:]
-        out.setncatts({a: src.getncattr(a) for a in src.ncattrs()})
-        out.setncatts({"member": m, "bank_draw": d,
-                       "scale_factors": " ".join(f"{k}={v}" for k, v in SCALE.items()),
-                       "centered": int(center), "assignment_seed": args.seed})
-        outs.append((path, out))
+
+    mean = {}
+    if center:
+        for name, fac in SCALE.items():
+            total = None
+            for f in bank:
+                with netCDF4.Dataset(f) as s:
+                    a = np.asarray(s[name][:], np.float64) * fac
+                total = a if total is None else total + a
+            mean[name] = total / len(bank)
+            del total
 
     print(f"members <- draws {picked} (seed {args.seed}, centered={center})")
-    print("RMS per member (after scaling" + (" and centering)" if center else ")"))
-    for name, fac in SCALE.items():
-        stack = np.array([np.asarray(s[name][:], np.float64) * fac for s in srcs])
-        mean = stack.mean(axis=0)
-        if center:
-            stack -= mean
-        for (path, out), field, src in zip(outs, stack, srcs):
-            v = out.createVariable(name, "f4", src[name].dimensions, zlib=True, complevel=2, shuffle=True)
-            v.setncatts({a: src[name].getncattr(a) for a in src[name].ncattrs()})
-            v[:] = field.astype(np.float32)
-        rms = np.sqrt((stack ** 2).mean(axis=tuple(range(1, stack.ndim))))
-        print(f"   {name:7s} " + " ".join(f"{r:9.3g}" for r in rms)
-              + f"   |sum over members| max {np.abs(stack.sum(axis=0)).max():.2g}")
-
-    for path, out in outs:
-        out.close()
+    rms = {name: [] for name in SCALE}
+    check = {name: None for name in SCALE}
+    for m, (d, f) in enumerate(zip(picked, bank), start=1):
+        path = os.path.join(out_dir, f"pert_mem{m:03d}.nc")
+        with netCDF4.Dataset(f) as src, netCDF4.Dataset(path + ".tmp", "w", format="NETCDF4") as out:
+            for name, dim in src.dimensions.items():
+                out.createDimension(name, len(dim))
+            out.createVariable("Times", src["Times"].dtype, src["Times"].dimensions)[:] = src["Times"][:]
+            out.setncatts({a: src.getncattr(a) for a in src.ncattrs()})
+            out.setncatts({"member": m, "bank_draw": d,
+                           "scale_factors": " ".join(f"{k}={v}" for k, v in SCALE.items()),
+                           "centered": int(center), "assignment_seed": args.seed})
+            for name, fac in SCALE.items():
+                field = np.asarray(src[name][:], np.float64) * fac
+                if center:
+                    field -= mean[name]
+                v = out.createVariable(name, "f4", src[name].dimensions, zlib=True, complevel=2, shuffle=True)
+                v.setncatts({a: src[name].getncattr(a) for a in src[name].ncattrs()})
+                v[:] = field.astype(np.float32)
+                rms[name].append(np.sqrt((field ** 2).mean()))
+                check[name] = field if check[name] is None else check[name] + field
         os.replace(path + ".tmp", path)
+
+    print("RMS per member (after scaling" + (" and centering)" if center else ")"))
+    for name in SCALE:
+        print(f"   {name:7s} " + " ".join(f"{r:9.3g}" for r in rms[name])
+              + f"   |sum over members| max {np.abs(check[name]).max():.2g}")
 
     with open(os.path.join(args.perts_dir, "assignment.txt"), "w") as f:
         f.write(f"# member bank_draw   (seed {args.seed}; scale "
