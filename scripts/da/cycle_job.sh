@@ -32,23 +32,11 @@ echo running > "${out}/status"
 SECONDS=0
 
 # --- analysis -----------------------------------------------------------------------------
-# one filter pass: conv in run/filter, mrms in run/filter_mrms
-filter_pass() {
-   local pass=$1 dir=${RUN_DIR}/filter t0=${SECONDS}
-   [ "${pass}" = conv ] || dir=${RUN_DIR}/filter_mrms
-   "${DA}/prep_filter.sh" "${exp_sh}" "${t}" "${pass}"
-   log "cycle ${t}: filter (${pass}) on $((FILTER_NODES * FILTER_TASKS_PER_NODE)) ranks"
-   # run_filter (cycle_lib.sh): fails unless filter.log has "Finished ... at"; exit guard for a hang
-   run_filter "${dir}" -N "${FILTER_NODES}" -n $((FILTER_NODES * FILTER_TASKS_PER_NODE)) \
-      --ntasks-per-node="${FILTER_TASKS_PER_NODE}" -c 1 --exact \
-      || die "filter (${pass}) failed or did not finish at ${t}, see ${dir}/filter.log"
-   log "cycle ${t}: filter (${pass}) done in $((SECONDS - t0)) s"
-   "${DA}/post_filter.sh" "${exp_sh}" "${t}" save "${pass}"
-}
+# one filter pass: filter_pass (cycle_lib.sh; conv in run/filter, mrms in run/filter_mrms)
 if [ "${t}" != "${FIRST_CYCLE}" ]; then
    if [ ! -f "${out}/filter.done" ]; then
-      filter_pass conv
-      if two_pass; then filter_pass mrms; fi
+      filter_pass "${exp_sh}" "${t}" conv
+      if two_pass; then filter_pass "${exp_sh}" "${t}" mrms; fi
       touch "${out}/filter.done"
    fi
    "${DA}/post_filter.sh" "${exp_sh}" "${t}" members

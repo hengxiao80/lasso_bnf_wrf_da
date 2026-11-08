@@ -11,7 +11,7 @@
 #   save mrms: the same from run/filter_mrms/ to output/<t>/filter_mrms/ (two-pass runs); a pass
 #   without inflation (MRMS_INFLATION = pass1) has no inflation files.
 # members: for each member without output/<t>/memNNN/update.done, one one-node srun step running
-#   member mode; all concurrently.
+#   member mode; all concurrently, with MEMBER_STEP_CPUS CPUs each (as prep_filter.sh; default 8).
 # member: for member NNN
 #   1. save filter's in-place output run/memNNN/dart_d01.nc as output/<t>/memNNN/analysis_d01.nc
 #      (its T is still the prior THM: T is not in the DART state);
@@ -65,7 +65,7 @@ members)
    pids=()
    for m in $(members); do
       [ ! -f "${out}/mem${m}/update.done" ] || continue
-      srun -N 1 -n 1 -c 8 --exact "$0" "${exp_sh}" "${t}" member "${m}" &
+      srun -N 1 -n 1 -c "${MEMBER_STEP_CPUS:-8}" --exact "$0" "${exp_sh}" "${t}" member "${m}" &
       pids+=($!)
    done
    [ ${#pids[@]} -eq 0 ] || wait_all "${pids[@]}" || die "member update failed at ${t}"

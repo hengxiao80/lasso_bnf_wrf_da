@@ -94,19 +94,29 @@ SEC_TABLE=${SOFTWARE_DIR}/DART/assimilation_code/programs/gen_sampling_err_table
 # deleted), identical to today's in all 199 variables.
 GRID_FILE=${MEAN_DIR}/wrfinput_d01_2025-05-20_00_00_00
 
-# Resources: the 5-member experiment's values, kept until the measurements of fulltest_steps.md Part C
-# set nodes per member and filter nodes; the 50-member jobs (member array + filter job, B2) replace the
-# one 40-node allocation of the 5-member runs. There: each member's wrf.exe on 8 nodes,
-# 16 x 8 ranks x 8 threads; filter on FILTER_NODES x FILTER_TASKS_PER_NODE ranks, one CPU each
-# (prep_filter.sh sets &ensemble_manager_nml tasks_per_node). Filter on 40 x 32 since 2026-10-20 (user;
-# step 13 used 8 x 16): conventional pass at 00:30 with the observation loop 97 s -> 10 s, analyses
-# bit-identical to 8 x 16 (obs_expansion.md Sec. 9, scaling test job 1054411). Not recorded in
-# settings.txt, since the analyses don't depend on it; overridable from sbatch's environment.
-MEMBER_NODES=8
-NPROC_X=16
-NPROC_Y=8
+# Resources (fulltest_steps.md Part C, decided by the user 2026-11-07/08; the jobs of B2: a WRF array and a
+# filter job per cycle, chained by chain_submit.sh). Not recorded in settings.txt, since the analyses don't
+# depend on them; at most 80 nodes in use at a time.
+# WRF: each member's wrf.exe on MEMBER_NODES = 2 nodes, 8 x 4 ranks x 8 threads (C1: 308 s and 616 node-s per
+# segment, against 128-138 s and 1024-1104 node-s on 8 nodes; pending B3: 50 members' restart I/O at once), one
+# array task per member, at most MEMBER_MAX = 40 at once (80 nodes).
+MEMBER_NODES=2
+NPROC_X=8
+NPROC_Y=4
+MEMBER_MAX=40
+# The per-member steps before and after filter (prep_filter.sh, post_filter.sh) run in the filter job, each with
+# MEMBER_STEP_CPUS CPUs: 64 = at most 2 members per node on the 40 filter nodes (C2: prior ~11 s, update ~93 s).
+MEMBER_STEP_CPUS=64
+# Filter on FILTER_NODES x FILTER_TASKS_PER_NODE ranks, one CPU each (prep_filter.sh sets &ensemble_manager_nml
+# tasks_per_node). C3 (50 members, stand-in priors): 40 x 32 187 s, 20 x 32 298 s, analyses identical; 40 x 32
+# chosen, 20 x 32 if queue waits grow. Overridable from the environment.
 FILTER_NODES=${FILTER_NODES:-40}
 FILTER_TASKS_PER_NODE=${FILTER_TASKS_PER_NODE:-32}
+# Time limits for B3: measured times with margins chosen by judgment (fulltest_steps.md B2): a WRF task ~3.9 x
+# the 2-node segment of C1 (308-309 s, one member alone); the filter job ~6 x its measured parts (~290 s; the
+# check of the previous cycle at 50 members not measured). D1's limits come from B3's measured maxima.
+WRF_TASK_TIME=00:20:00
+FILTER_JOB_TIME=00:30:00
 
 # 1: wrfrst_dart.py insert --hydrostatic-ph (PH from the analyzed MU, THM, QVAPOR instead of
 # DART's PH increment); 0 = DART's PH. Default 1 since 2026-10-03 (user, after step 13: it removes

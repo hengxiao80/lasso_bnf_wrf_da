@@ -1,0 +1,36 @@
+#!/bin/bash
+# One member's WRF segment in a chained cycling run (notes/fulltest_steps.md B2): array task <member number> of the
+# WRF array of cycle <t>, submitted by chain_submit.sh (which sets the array, time limit, job name and output file;
+# runs are started or resumed only with chain_submit.sh). Runs advance_member.sh <t> <NNN>: the 15-min segment on
+# MEMBER_NODES = 2 nodes (8 x 4 ranks x 8 threads; run_wrf_segment.sh with its exit guard, hcoll on), the wrfout
+# kept by B1's rule, the new wrfrst into run<RUN>/memNNN/, output<RUN>/<t>/memNNN/advance.done.
+# Environment as slurm.wrf_nodes (C1) and slurm.cycle's WRF settings: UCX_TLS=self,sm,ud, OMP_* for 8 threads.
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:20:00
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh
+t=$1
+m=$(printf '%03d' "${SLURM_ARRAY_TASK_ID}")
+
+date
+echo "member ${m}, cycle ${t}, run '${RUN_NAME:-}', job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID} on ${SLURM_JOB_NODELIST}"
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# wrf.exe settings, as slurm.cycle and slurm.wrf_nodes
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+${PROJECT_DIR}/scripts/da/advance_member.sh ${EXP_SH} ${t} ${m}
+status=$?
+date
+exit ${status}

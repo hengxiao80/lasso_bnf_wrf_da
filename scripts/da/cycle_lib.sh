@@ -89,3 +89,89 @@ run_filter() {
    [ "${rc}" -eq 0 ] || [ -n "${t_cancel}" ] || return 1
    return 0
 }
+
+# filter_pass <experiment.sh> <YYYYMMDDHHMM> <conv|mrms>: one filter pass at t: prep_filter.sh, filter on
+# FILTER_NODES x FILTER_TASKS_PER_NODE ranks (run_filter), post_filter.sh save; conv in run/filter, mrms (the
+# second pass of a two-pass run) in run/filter_mrms. Used by cycle_job.sh (5-member runs) and filter_step.sh
+# (50-member chain); moved here from cycle_job.sh on 2026-11-08, unchanged.
+filter_pass() {
+   local exp_sh=$1 t=$2 pass=$3 dir=${RUN_DIR}/filter t0=${SECONDS}
+   [ "${pass}" = conv ] || dir=${RUN_DIR}/filter_mrms
+   "${PROJECT_DIR}/scripts/da/prep_filter.sh" "${exp_sh}" "${t}" "${pass}"
+   log "cycle ${t}: filter (${pass}) on $((FILTER_NODES * FILTER_TASKS_PER_NODE)) ranks"
+   # run_filter: fails unless filter.log has "Finished ... at"; exit guard for a hang
+   run_filter "${dir}" -N "${FILTER_NODES}" -n $((FILTER_NODES * FILTER_TASKS_PER_NODE)) \
+      --ntasks-per-node="${FILTER_TASKS_PER_NODE}" -c 1 --exact \
+      || die "filter (${pass}) failed or did not finish at ${t}, see ${dir}/filter.log"
+   log "cycle ${t}: filter (${pass}) done in $((SECONDS - t0)) s"
+   "${PROJECT_DIR}/scripts/da/post_filter.sh" "${exp_sh}" "${t}" save "${pass}"
+}
+
+# run_preflight <first> <last> [write]: the checks made before a run of cycles <first> to <last> starts or
+# resumes (driver.sh, chain_submit.sh; moved here from driver.sh on 2026-11-08, unchanged): every analysis time
+# has its observation files; the cycle before <first> is complete; one HYDROSTATIC_PH, INF_DAMPING, INF_FLAVOR,
+# INF_SD_LOWER_BOUND, observation set and MRMS handling per run, recorded in output/settings.txt on the first
+# call (write = 1, the default; 0 only compares, for dry runs) and compared on every later one.
+run_preflight() {
+   local first=$1 last=$2 write=${3:-1} t f prev settings
+   [ "${first}" -le "${last}" ] || die "first ${first} after last ${last}"
+   [ "${first}" -ge "${FIRST_CYCLE}" ] || die "first ${first} before FIRST_CYCLE ${FIRST_CYCLE}"
+   t=${first}
+   while [ "${t}" -le "${last}" ]; do
+      if [ "${t}" != "${FIRST_CYCLE}" ] && [ ! -s "${OBS_DIR}/${t}/obs_seq.out" ]; then
+         die "no ${OBS_DIR}/${t}/obs_seq.out (make_cycle_obs.sh ${t})"
+      fi
+      f=
+      two_pass && f=obs_seq.mrms
+      one_pass_mrms && f=obs_seq.joint
+      if [ "${t}" != "${FIRST_CYCLE}" ] && [ -n "${f}" ] && [ ! -s "${OBS_DIR}/${t}/${f}" ]; then
+         die "no ${OBS_DIR}/${t}/${f} (make_cycle_obs.sh ${t} with MRMS set)"
+      fi
+      t=$(add_minutes "${t}" "${CYCLE_MINUTES}")
+   done
+   if [ "${first}" != "${FIRST_CYCLE}" ]; then
+      prev=$(add_minutes "${first}" -"${CYCLE_MINUTES}")
+      grep -qx complete "${OUTPUT_DIR}/${prev}/status" 2> /dev/null || die "cycle ${prev} not complete"
+   fi
+   # One HYDROSTATIC_PH, INF_DAMPING, INF_FLAVOR, INF_SD_LOWER_BOUND and observation set per run: a resume
+   # with other values would mix them in one run. The observation set (OBS_NAME) is recorded only when it
+   # isn't the step 13 obs/, so the step 13 runs keep their settings line.
+   settings="hydrostatic_ph=${HYDROSTATIC_PH} inf_damping=${INF_DAMPING} inf_flavor=${INF_FLAVOR}"
+   # INF_SD_LOWER_BOUND: 0 < value <= 0.6 (the initial sd); recorded only when not 0.6, so older runs keep
+   # their settings line.
+   awk -v b="${INF_SD_LOWER_BOUND}" 'BEGIN { exit !(b ~ /^[0-9]*\.?[0-9]+$/ && b > 0 && b <= 0.6) }' \
+      || die "INF_SD_LOWER_BOUND=${INF_SD_LOWER_BOUND}: must be > 0 and <= 0.6"
+   [ "${INF_SD_LOWER_BOUND}" = 0.6 ] || settings="${settings} inf_sd_lower_bound=${INF_SD_LOWER_BOUND}"
+   if [ -n "${OBS_NAME}" ]; then
+      [ -s "${OBS_DIR}/obs_settings.txt" ] || die "no ${OBS_DIR}/obs_settings.txt (make_cycle_obs.sh)"
+      settings="${settings} obs=obs${OBS_NAME} $(cat "${OBS_DIR}/obs_settings.txt")"
+   fi
+   # MRMS runs: MRMS_FILTER (two_pass | one_pass) has no default and must be given, and so has
+   # MRMS_INFLATION (pass1 | both) for two_pass; neither may be set where it doesn't apply.
+   if has_mrms; then
+      case ${MRMS_FILTER} in
+         two_pass|one_pass) settings="${settings} mrms_filter=${MRMS_FILTER}" ;;
+         *) die "${OBS_DIR} has MRMS: set MRMS_FILTER=two_pass or one_pass" ;;
+      esac
+   elif [ -n "${MRMS_FILTER}" ]; then
+      die "MRMS_FILTER=${MRMS_FILTER} set, but ${OBS_DIR} has no MRMS"
+   fi
+   if two_pass; then
+      case ${MRMS_INFLATION} in
+         pass1) settings="${settings} mrms_inflation=pass1" ;;
+         both)
+            case ${MRMS_PASS2_DAMPING} in 0|1) ;; *) die "MRMS_PASS2_DAMPING must be 0 or 1" ;; esac
+            settings="${settings} mrms_inflation=both mrms_pass2_damping=${MRMS_PASS2_DAMPING}" ;;
+         *) die "two-pass run: set MRMS_INFLATION=pass1 or both" ;;
+      esac
+   elif [ -n "${MRMS_INFLATION}" ]; then
+      die "MRMS_INFLATION=${MRMS_INFLATION} set, but this is not a two-pass run"
+   fi
+   if [ -f "${OUTPUT_DIR}/settings.txt" ]; then
+      grep -qx "${settings}" "${OUTPUT_DIR}/settings.txt" \
+         || die "${OUTPUT_DIR} was run with $(cat "${OUTPUT_DIR}/settings.txt"), not ${settings}"
+   elif [ "${write}" = 1 ]; then
+      mkdir -p "${OUTPUT_DIR}"
+      echo "${settings}" > "${OUTPUT_DIR}/settings.txt"
+   fi
+}

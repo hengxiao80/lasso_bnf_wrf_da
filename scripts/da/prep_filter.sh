@@ -18,7 +18,9 @@
 #
 # 1. Prior DART-facing files: wrfrst_dart.py extract (with the DART_EXTRA fields of cycle_lib.sh) of
 #    each member's run/memNNN/wrfrst_d01_<t> into run/memNNN/dart_d01.nc (filter updates it in
-#    place), saved as output/<t>/memNNN/prior_d01.nc. One one-node srun step per member, concurrently.
+#    place), saved as output/<t>/memNNN/prior_d01.nc. One one-node srun step per member, concurrently, with
+#    MEMBER_STEP_CPUS CPUs (experiment.sh; default 8; the 50-member experiment uses 64, i.e. at most 2 members
+#    per node, notes/fulltest_steps.md C2).
 # 2. run/filter/ from scratch: input.nml (config/input.nml.filter with tasks_per_node set to
 #    FILTER_TASKS_PER_NODE, the prior inf_damping, inf_flavor and inf_sd_lower_bound to INF_DAMPING,
 #    INF_FLAVOR and INF_SD_LOWER_BOUND),
@@ -70,7 +72,7 @@ if [ "${pass}" = conv ]; then
       md=${RUN_DIR}/mem${m}
       [ -f "${md}/wrfrst_d01_${ft}" ] || die "no ${md}/wrfrst_d01_${ft}"
       mkdir -p "${out}/mem${m}"
-      srun -N 1 -n 1 -c 8 --exact bash -c "set -e
+      srun -N 1 -n 1 -c "${MEMBER_STEP_CPUS:-8}" --exact bash -c "set -e
          ${PY} ${DA}/wrfrst_dart.py extract ${md}/wrfrst_d01_${ft} ${md}/dart_d01.nc --extra ${DART_EXTRA}
          cp ${md}/dart_d01.nc ${out}/mem${m}/prior_d01.nc" &
       pids+=($!)

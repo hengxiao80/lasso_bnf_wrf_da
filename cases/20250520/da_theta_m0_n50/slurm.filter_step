@@ -1,0 +1,42 @@
+#!/bin/bash
+# The filter job of a chained cycling run (notes/fulltest_steps.md B2): filter_step.sh <t> <last>, submitted by
+# chain_submit.sh (which sets the nodes, time limit, job name, dependency and output file; runs are started or
+# resumed only with chain_submit.sh). FILTER_NODES = 40 nodes; the run's last job (t > last) 1 node.
+# filter_step.sh's log is appended to output<RUN>/<t>/cycle.log (the last job's to output<RUN>/<last>/cycle.log).
+# Job shape and environment as slurm.cycle (16 tasks x 8 CPUs per node, OMP_*, stack limit, UCX settings for the
+# multi-node filter step); filter runs with hcoll off (run_filter, cycle_lib.sh).
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:30:00
+#SBATCH --nodes=40
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh
+t=$1 last=$2
+source ${EXP_SH}
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # add_minutes
+logt=${t}
+[ "${t}" -le "${last}" ] || logt=$(add_minutes "${t}" -"${CYCLE_MINUTES}")
+mkdir -p ${OUTPUT_DIR}/${logt}
+
+date
+echo "filter step ${t} (last ${last}), run '${RUN_NAME}', job ${SLURM_JOB_ID} on ${SLURM_JOB_NUM_NODES} nodes; log ${OUTPUT_DIR}/${logt}/cycle.log"
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+${PROJECT_DIR}/scripts/da/filter_step.sh ${EXP_SH} ${t} ${last} >> ${OUTPUT_DIR}/${logt}/cycle.log 2>&1
+status=$?
+tail -n 8 ${OUTPUT_DIR}/${logt}/cycle.log
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%24,Elapsed,NNodes,NTasks,MaxRSS,State
+exit ${status}
