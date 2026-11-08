@@ -112,6 +112,10 @@ MEMBER_STEP_CPUS=64
 # chosen, 20 x 32 if queue waits grow. Overridable from the environment.
 FILTER_NODES=${FILTER_NODES:-40}
 FILTER_TASKS_PER_NODE=${FILTER_TASKS_PER_NODE:-32}
+# check_cycle.py of the previous cycle (filter_step.sh, in the background on the filter job's first node, beside
+# extraction and filter) checks the members in CHECK_WORKERS processes. B3's 00:15 cycle on the login node
+# (2026-11-08): 477 s before the one-pass change, then 359 s with 1 process, 115 s with 4, 80 s with 8.
+CHECK_WORKERS=8
 # Time limits for B3: measured times with margins chosen by judgment (fulltest_steps.md B2): a WRF task ~3.9 x
 # the 2-node segment of C1 (308-309 s, one member alone); the filter job ~6 x its measured parts (~290 s; the
 # check of the previous cycle at 50 members not measured). D1's limits come from B3's measured maxima.

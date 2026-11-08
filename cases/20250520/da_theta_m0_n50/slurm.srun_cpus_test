@@ -1,0 +1,70 @@
+#!/bin/bash
+# Part 4, step 2 (hand-off 2026-11-08): the srun warning in the filter job. Its member steps (prep_filter.sh,
+# post_filter.sh) use `srun -N 1 -n 1 -c ${MEMBER_STEP_CPUS} --exact` with MEMBER_STEP_CPUS=64, in a job shaped
+# --ntasks-per-node=16 --cpus-per-task=8 (slurm.filter_step), and each printed "Job step's --cpus-per-task value
+# exceeds that of job (64 > 8). Job step may never run." (B3: 100 times in output_b3/202505200015/cycle.log).
+# This job has slurm.filter_step's shape and environment on 1 node and starts, per variant, three such steps at
+# once (128 CPUs per node, so two run and the third waits). Variants:
+#   plain      srun as now
+#   no_cpt     env -u SLURM_CPUS_PER_TASK srun ...
+#   no_tres    env -u SLURM_TRES_PER_TASK srun ...
+#   no_both    env -u SLURM_CPUS_PER_TASK -u SLURM_TRES_PER_TASK srun ...
+#   quiet      srun --quiet ...
+# Per variant: the count of warnings in srun's stderr (and its other messages); per step its CPU set, the
+# SLURM_CPUS_PER_TASK / OMP_NUM_THREADS it sees, and its start and end times (two at once, the third after).
+#   sbatch slurm.srun_cpus_test
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --job-name=sruncpu520
+#SBATCH --time=00:05:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --exclusive
+#SBATCH --output=logs/slurm.srun_cpus_test.%j.out
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+# as slurm.filter_step
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+work=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/tests/srun_cpus/${SLURM_JOB_ID}
+mkdir -p ${work}
+date
+echo "job ${SLURM_JOB_ID} on $(hostname); job environment:"
+env | grep -E '^SLURM_(CPUS|TRES|JOB_CPUS|NTASKS|TASKS_PER)' | sort | sed 's/^/   /'
+
+probe='echo "$(date +%s.%N | cut -c1-14) start step ${SLURM_STEP_ID} on $(hostname): nproc $(nproc),'\
+' cpus $(grep Cpus_allowed_list /proc/self/status | cut -f2), SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-unset},'\
+' SLURM_TRES_PER_TASK=${SLURM_TRES_PER_TASK:-unset}, OMP_NUM_THREADS=${OMP_NUM_THREADS:-unset}"; sleep 8;'\
+' echo "$(date +%s.%N | cut -c1-14) end step ${SLURM_STEP_ID}"'
+
+run_variant() {   # name, then the command prefix before srun's own options
+   local name=$1; shift
+   local pids=() k
+   for k in 1 2 3; do
+      "$@" -N 1 -n 1 -c 64 --exact bash -c "${probe}" > ${work}/${name}.${k}.out 2> ${work}/${name}.${k}.err &
+      pids+=($!)
+      sleep 0.5
+   done
+   wait "${pids[@]}"
+   echo
+   echo "== ${name}: $* -N 1 -n 1 -c 64 --exact"
+   echo "   warnings: $(cat ${work}/${name}.*.err | grep -c 'exceeds that of job')"
+   cat ${work}/${name}.*.err | grep -v 'exceeds that of job' | sort | uniq -c | sed 's/^/   other stderr: /'
+   sort -n ${work}/${name}.*.out | sed 's/^/   /'
+}
+
+run_variant plain   srun
+run_variant no_cpt  env -u SLURM_CPUS_PER_TASK srun
+run_variant no_tres env -u SLURM_TRES_PER_TASK srun
+run_variant no_both env -u SLURM_CPUS_PER_TASK -u SLURM_TRES_PER_TASK srun
+run_variant quiet   srun --quiet
+echo
+date

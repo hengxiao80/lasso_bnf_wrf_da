@@ -44,7 +44,8 @@ if ! grep -qx complete "${op}/status" 2> /dev/null; then
       exit 0
    fi
    log "cycle ${p}: all ${NUM_ENS} members advanced; check_cycle.py in the background"
-   "${PY}" "${DA}/check_cycle.py" "${op}" --nmem "${NUM_ENS}" > "${op}/check_cycle.log" 2>&1 &
+   "${PY}" "${DA}/check_cycle.py" "${op}" --nmem "${NUM_ENS}" --workers "${CHECK_WORKERS:-1}" \
+      > "${op}/check_cycle.log" 2>&1 &
    cpid=$!
 fi
 

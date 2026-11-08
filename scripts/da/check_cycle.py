@@ -1,6 +1,6 @@
 """Per-cycle checks for the cycling (pilot step 12), run by cycle_job.sh on output/<t>/.
 
-Usage: .venv/bin/python scripts/da/check_cycle.py <output/YYYYMMDDHHMM> [--nmem 5] [--spread-only]
+Usage: .venv/bin/python scripts/da/check_cycle.py <output/YYYYMMDDHHMM> [--nmem 5] [--spread-only] [--workers N]
 
 Prints, if the cycle had an analysis (filter/ exists), for the first pass and, in a two-pass run
 (filter_mrms/ exists), again for the MRMS pass (each pass's UPDATE variables are read from the
@@ -27,14 +27,16 @@ mismatch, or on a missing file; the cycle is then not marked complete.
 import argparse
 import glob
 import math
+import multiprocessing
 import os
 import re
 import sys
+from concurrent.futures import ProcessPoolExecutor
 
 import netCDF4
 import numpy as np
 
-from check_filter_gate import STATE, diff_report, obs_report, read_obs_seq, stages
+from check_filter_gate import STATE, obs_report, read_obs_seq, stages
 from restart_increment_test import diag_series
 
 HYDRO = ["QCLOUD", "QRAIN", "QSNOW", "QGRAUP", "REFL_10CM"]
@@ -168,6 +170,37 @@ def spread_report(out, passes):
                                           f" ({ratio(analysis[(n, r)], forecast[(n, r)])})" for r in ("all", "echo")))
 
 
+def member_check(job):
+    """One member's analysis - prior report (as diff_report) and NaN check of both files (as nan_check on
+    STATE_ALL + QNRAIN), reading each field of each file once. job = (m, mdir, diff names). Returns the report
+    text and the problems found (the prior's, then the analysis's). Masking is off: np.asarray drops netCDF4's
+    mask anyway, so the values are the same."""
+    m, mdir, diff_names = job
+    prior, anal = os.path.join(mdir, "prior_d01.nc"), os.path.join(mdir, "analysis_d01.nc")
+    nan_names = STATE_ALL + ["QNRAIN"]
+    found = {prior: [], anal: []}
+    lines = {}
+    with netCDF4.Dataset(prior) as a, netCDF4.Dataset(anal) as b:
+        for ds in (a, b):
+            ds.set_auto_mask(False)
+        for n in dict.fromkeys(nan_names + diff_names):   # each name once; NaN problems in nan_check's order
+            x, y = (np.asarray(ds[n][:], np.float64) if n in ds.variables else None for ds in (a, b))
+            if n in nan_names:
+                for path, v in ((prior, x), (anal, y)):
+                    if v is not None and np.isnan(v).any():
+                        found[path].append(f"NaN in {n} of {path}")
+            if n in diff_names:
+                if x is None or y is None:
+                    lines[n] = f"   {''} {n}: missing"
+                    continue
+                dd = y - x
+                nan = int(np.isnan(y).sum())
+                lines[n] = (f"   {''} {n:7s} RMS {np.sqrt(np.nanmean(dd ** 2)):.3g}  max {np.nanmax(np.abs(dd)):.3g}"
+                            + (f"  NaN {nan}" if nan else ""))
+    text = f"member {m}:\n" + "".join(lines[n] + "\n" for n in diff_names)
+    return text, found[prior] + found[anal]
+
+
 def segment_report(mdir, m, restart):
     rsl = os.path.join(mdir, "rsl.out.0000")
     if not os.path.exists(rsl):
@@ -193,6 +226,7 @@ def main():
     p.add_argument("out")
     p.add_argument("--nmem", type=int, default=5)
     p.add_argument("--spread-only", action="store_true")
+    p.add_argument("--workers", type=int, default=1, help="processes for the per-member analysis - prior checks")
     args = p.parse_args()
     out = args.out
     fdir = os.path.join(out, "filter")
@@ -230,20 +264,28 @@ def main():
             print(f"spread by stage failed: {e!r}")
     if analysis:
         print("\nanalysis - prior per member (DART-facing files; T is not in the state):")
-        for m in range(1, args.nmem + 1):
-            mdir = os.path.join(out, f"mem{m:03d}")
-            prior, anal = os.path.join(mdir, "prior_d01.nc"), os.path.join(mdir, "analysis_d01.nc")
-            for f in (prior, anal):
-                if not os.path.exists(f):
-                    problems.append(f"no {f}")
-            if os.path.exists(prior) and os.path.exists(anal):
-                print(f"member {m}:")
-                diff_report(prior, anal, updated + ["QNRAIN"], "")
-                nan_check(prior, STATE_ALL + ["QNRAIN"])
-                nan_check(anal, STATE_ALL + ["QNRAIN"])
+        mdirs = {m: os.path.join(out, f"mem{m:03d}") for m in range(1, args.nmem + 1)}
+        both = [m for m, d in mdirs.items()
+                if all(os.path.exists(os.path.join(d, f)) for f in ("prior_d01.nc", "analysis_d01.nc"))]
+        jobs = [(m, mdirs[m], updated + ["QNRAIN"]) for m in both]
+        # members in --workers processes; map returns them in order. A worker killed outright (e.g. out of memory)
+        # raises BrokenProcessPool here, so the check fails instead of waiting forever (as multiprocessing.Pool would).
+        pool = (ProcessPoolExecutor(args.workers, mp_context=multiprocessing.get_context("fork"))
+                if args.workers > 1 else None)
+        results = pool.map(member_check, jobs) if pool else map(member_check, jobs)
+        for m, mdir in mdirs.items():
+            for f in ("prior_d01.nc", "analysis_d01.nc"):
+                if not os.path.exists(os.path.join(mdir, f)):
+                    problems.append(f"no {os.path.join(mdir, f)}")
+            if m in both:
+                text, found = next(results)
+                print(text, end="")
+                problems.extend(found)
             log = os.path.join(mdir, "insert.log")
             if os.path.exists(log):
                 print("".join(f"   insert: {l}" for l in open(log)), end="")
+        if pool:
+            pool.shutdown()
 
     print("\nsegments:")
     for m in range(1, args.nmem + 1):
