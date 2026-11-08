@@ -1,0 +1,47 @@
+# Hand-off: "fulltest: initial setup part 4"
+
+Written 2026-11-08 at the end of session "fulltest: initial setup part 3". Everything from that session is committed (B1 `d6ecbb6`, C1 `a362a78`, C2 `8b69c9e` and `18fc159`, C3 `b05813c`, B2 `86c395c`, B3 `dc19a8d`, then this hand-off); **not pushed** (`main` ahead of `origin/main`; push only when the user asks). No jobs running.
+
+Repo: `/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da` (WRF-DART for LASSO BNF, case 2025-05-20). Read `CLAUDE.md` first, then `notes/fulltest_steps.md` (Sec. 0 scope; Sec. 1 Parts B and C hold every result and decision of this session; Sec. 3 the decisions in short).
+
+## Where things stand
+
+Parts A, B and C are done; the 50-member cycling works end to end. Experiment `cases/20250520/da_theta_m0_n50/`.
+
+- **B1** (output): `write_hist_at_0h_rst = .true.`, default history stream only (no iofields file) in the 50-member `namelist.input.wrf`; `advance_member.sh` keeps only the start-of-segment `wrfout` when the namelist sets that flag. U10E and V10E are 0 in the start-of-segment `wrfout` (not in the restart; nothing reads them).
+- **C1** (WRF nodes): **2 nodes per member** (8 × 4 ranks × 8 threads; 308 s and 616 node-s per segment, 40–44 % less node-time than 8 nodes), **at most 80 nodes in use at a time** (user), so at most 40 members at once. No 1-node test (user).
+- **C2** (per-member Python steps): `wrfrst_dart.py extract` fixed (classic netCDF: all variables defined before data; byte-identical, ~10× faster). One member's serial steps 95 s (prior 11, update 84, mostly `insert` 31–45 s and the refit 30 s). **Decided (user): the steps run in the filter job, at most 2 per node** (`MEMBER_STEP_CPUS=64`); `insert` profiled and left as it is.
+- **C3** (filter at 50 members, stand-in priors = run 5's five 00:15 priors each used 10 times): 40 × 32 187 s, 1.99 GB per task; 20 × 32 298 s; analyses identical. **Decided (user): 40 × 32** (20 × 32 if queue waits grow); no 80-node test (80 nodes are rarely free at once).
+- **B2** (job chain, user-reviewed design in `fulltest_steps.md` B2): per cycle a WRF array A(t) (`slurm.wrf_member`, one task per member, `advance_member.sh`, `--array=…%40`) and a filter job F(t + 15) (`slurm.filter_step` → `scripts/da/filter_step.sh`, 40 nodes): previous cycle's members advanced? (one automatic retry per cycle, then stop; user) → `check_cycle.py` of the previous cycle in the background → extraction, filter, save → the check's result (failed: stop before any restart is changed) → member updates → `scripts/da/chain_submit.sh` for the next step (A(t + 15) `afterok` on this job, then F(t + 30) `afterany` on A). The run's last job F(last + 15) runs on 1 node and only checks (user). `chain_submit.sh <exp> <first> <last> [--after <job>] [--dry-run]` starts, resumes and continues runs from the markers (`filter.done`, `memNNN/update.done`, `memNNN/advance.done`, `status`); job names `n50w<RUN_NAME>` and `n50f<RUN_NAME>`; submissions in `output<RUN>/chain.log`. `filter_pass` and `run_preflight` moved into `cycle_lib.sh` (5-member scripts unchanged in behavior). `sbatch` works from compute nodes (tested).
+- **B3 passed** (run `_b3`, 36 min, user: throwaway test; **D1 starts fresh**): cold start of all 50 members, the 00:15 analysis, the 00:15 → 00:30 advance, the final check; both cycles `complete`. WRF segments 308–370 s (29 members at once slowed them ≤ ~5 %, so 2 nodes per member stands); filter job F(00:15) 6.3 min (extraction 22 s, filter 187 s with real priors, member updates ~168 s with all 50 at once); cycle ~17 min without queue waits. **B3's outputs are kept for step 1 below**: `output_b3/` 697 GB, `run_b3/` 769 GB.
+
+## Next steps (each with the user's go-ahead)
+
+1. **`check_cycle.py` at 50 members took 474 s** (final job 1195178; 67 s with 5 members). In a normal cycle it runs beside the next extraction and filter (~3.5 min), so each filter job would wait ~4.5 min for it before the member updates. Profile it on the login node on `output_b3/202505200015` (`.venv/bin/python scripts/da/check_cycle.py <dir> --nmem 50`; it reads one file at a time, memory is no issue) with timers around its sections. Leads from reading the code: per member it calls `diff_report(prior, analysis, updated + ['QNRAIN'])` and then `nan_check` on the prior and on the analysis (`STATE_ALL + ['QNRAIN']`), each reading whole 3-D fields as float64, so every 3-D field of both files is read twice; `segment_report` reads each member's rsl files. Possible fixes (output must stay the same): one pass per file for the difference and the NaN check, and/or the members in parallel processes. Then delete B3's outputs (user to confirm).
+2. **`srun` warning** in the filter job: each of the 100 member steps printed "Job step's --cpus-per-task value exceeds that of job (64 > 8). Job step may never run." The job has `--cpus-per-task=8` (`slurm.cycle`'s shape, which filter needs: `CLAUDE.md` gotcha); the steps use `-c ${MEMBER_STEP_CPUS}` = 64 (`prep_filter.sh`, `post_filter.sh`). They ran correctly, at most 2 per node (`squeue -s` during B3: 30 nodes with 1, 7 with 2). Find a clean way in a 1-node test job (about a minute) with that job shape, e.g. `env -u SLURM_CPUS_PER_TASK srun …`, `srun --quiet`, or explicit node placement (`-w`) with `-c 8`; check that placement stays ≤ 2 per node.
+3. **D1's time limits** from B3's maxima with a stated margin (agreed: e.g. 2 ×): WRF task max 6:14 (member 8 at the cold start) → ~15 min instead of B3's 20; the filter job's limit depends on step 1 (F(00:15) took 6.3 min; the final check job 7.9 min). `WRF_TASK_TIME`, `FILTER_JOB_TIME` in the 50-member `experiment.sh`.
+4. **D1** (production run, user's go-ahead): the 1-h gate, 00:00 cold start + 4 analyses, settings as run 5 `_conv_refl_f2`; `RUN_NAME` to agree with the user. Start: `RUN_NAME=<name> OBS_NAME=_meso_a_calmkeep_mrms MRMS_FILTER=one_pass scripts/da/chain_submit.sh cases/20250520/da_theta_m0_n50/config/experiment.sh 202505200000 202505200100` (observations exist for 00:15–01:00). Disk: fresh files take their full nominal size (an analysis cycle ~513 GB in B3).
+5. **A7** before D2: observations for 01:15–06:00 (20 analyses; `fulltest_steps.md` A7).
+6. Later (`fulltest_steps.md` E1): `summarize_cycle_timing.py` expects the 5-member `cycle.log`; the chain's logs differ (WRF in array tasks, `chain.log`).
+
+## Facts found this session
+
+- **Classic netCDF writes**: every variable defined after data have been written makes netCDF rewrite the record data written so far (`extract` spent 69 of 73 s in `createVariable`). Define all variables first; keep fill mode on (off leaves the padding byte after `Times` non-deterministic). `build_member_bdy.py` (`write_state`) still has the old pattern (`CLAUDE.md` gotcha).
+- **Filter cost grows little with the ensemble**: 5 → 50 members, 133 → 187 s on 40 × 32 (the observation loop is per observation more than per member). The loop scales with ranks (1280 ranks ~90 s, 640 ~187 s); writing the ~240 GB of outputs scales with nodes; 64 ranks per node gain nothing over 32.
+- **Packing the Python steps on one node** (C2 rerun): throughput levels off near 10 members per node; `insert` slows most (45 s alone, 70 s at 5, 176 s at 25); single timings vary by ~⅓ between runs.
+- **Freshly written files take their full nominal size on disk**; older files use less (run 5's `wrfout` 4.39 GB nominal, 2.77 GB on disk after two weeks). What shrinks them, and when, is unknown; `fulltest_output_files.md` Sec. 3 says so.
+- **Thompson tables** (`freezeH2O.dat`, `qr_acr_*.dat`, 0.37 GB): WRF computes them when a run directory lacks them; members' `run<RUN>/memNNN/wrf/` keep them from the cold start on.
+- **`batch_all`**: 116 nodes, others hold ~55, so ~59 are idle at times; 80 at once rarely. `AllocNodes=ALL`; a `lua` job-submit plugin (not readable) accepts submissions from compute nodes.
+- Members 8 and 29 were the slowest WRF tasks in both B3 cycles (~6 min against ~5.3); not looked into.
+
+## Working rules
+
+- **No quantitative guesses** (times, memory, data volumes, job limits): derive from a measured run of the same script, show the basis, or say "unknown" and measure first. **A safety margin on a measured time is judgment: label it so, list what was not measured**, and set production limits from the real run's measured maxima (project memory `no-unfounded-estimates`, updated this session).
+- **Status lines before tool calls are full sentences** that say what is done, on what and why (`~/.claude/rules/answer-style.md`).
+- Jobs: the user's go-ahead before every `sbatch` (including `chain_submit.sh` without `--dry-run`); one step at a time; report each result. **At most 80 nodes in use at a time.** Commits only after the user has reviewed and said so; on `main`, only the session's own files; push only when asked.
+- Don't change files a running job uses. Notes per `~/.claude/rules/typora-markdown.md` (no hard-wrapped prose, narrow tables, diagrams ≤ 72 characters). No LaTeX in chat.
+- Environment: `source scripts/env_wrf.sh` before DART or WRF tools; Python is `.venv/bin/python`; `ls` is aliased with `-F` (use `command ls` or `find`). Login nodes: 32 GB per user; long login-node runs go detached (`setsid nohup …`), since Claude Code ends a session's background commands on `/exit`.
+
+## Starting the session
+
+Name it `fulltest: initial setup part 4`, and name this file in the first prompt (`notes/handoffs/2026-11-08_fulltest_initial_setup_part_4.md`).
