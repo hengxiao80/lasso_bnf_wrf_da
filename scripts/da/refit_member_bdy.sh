@@ -2,23 +2,35 @@
 # Refit a copy of a member's pristine boundary file to the member's current state (pilot step 8;
 # later called by advance_member.sh).
 #
-# Usage: refit_member_bdy.sh <state_file> <pristine_wrfbdy> <work_dir>
+# Usage: refit_member_bdy.sh <state_file> <pristine_wrfbdy> <work_dir> [<records>]
 #
 # <state_file> is the member's DART-facing file (wrfrst_dart.py extract, after filter) or a
 # wrfinput; update_wrf_bc reads its Times, U V W PH T QVAPOR MU MUB MAPFAC_* (T must equal THM).
 # Writes <work_dir>/wrfbdy_d01: a fresh copy of <pristine_wrfbdy> with the record containing the
 # state time starting at that time from the state, and tendencies to the record's original end
 # (patched update_wrf_bc, patches/README.md). The pristine file is never modified.
+# <records> (BDY_RECORDS in experiment.sh; since 2026-11-07, notes/fulltest_steps.md A6): if > 0, the copy
+# holds only that many records of the pristine file, starting with the one containing the state time
+# (subset_bdy.py --time-from), instead of all of them; the 50-member full test uses 2 (the record holding
+# the state time and the next, so a segment ending on the hour finds the next record). 0 or absent: a
+# copy of the whole file, as for the 5-member runs.
 # Needs the scripts/env_wrf.sh modules (netCDF libraries).
 set -eu
 
-state=$1 pristine=$2 work=$3
+state=$(readlink -f "$1") pristine=$(readlink -f "$2") work=$3 records=${4:-0}
+DA=$(dirname "$(readlink -f "$0")")
+PY=${DA}/../../.venv/bin/python
 UPDATE_WRF_BC=${UPDATE_WRF_BC:-/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/DART/models/wrf/work/update_wrf_bc}
 
 mkdir -p "${work}"
 cd "${work}"
 rm -f wrfbdy_d01 wrfinput_d01 wrfinput_mean dart_log.out dart_log.nml
-cp "${pristine}" wrfbdy_d01
+if [ "${records}" -gt 0 ]; then
+   "${PY}" "${DA}/subset_bdy.py" "${pristine}" wrfbdy_d01 --time-from "${state}" --records "${records}" \
+      > subset_bdy.log 2>&1 || { cat subset_bdy.log >&2; echo "refit_member_bdy.sh: subset failed" >&2; exit 1; }
+else
+   cp "${pristine}" wrfbdy_d01
+fi
 ln -sf "$(readlink -f "${state}")" wrfinput_d01
 # DART's initialize_utilities reads &utilities_nml; update_wrf_bc has no namelist of its own.
 cat > input.nml << EOF

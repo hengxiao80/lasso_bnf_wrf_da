@@ -91,7 +91,7 @@ member)
       --fields "${fields[@]}" "${opts[@]}" >> "${mo}/insert.log" 2>&1 \
       || { cat "${mo}/insert.log" >&2; die "insert failed for member ${m}"; }
    ${PY} "${DA}/wrfrst_dart.py" extract "${rst}" "${md}/start_d01.nc"
-   "${DA}/refit_member_bdy.sh" "${md}/start_d01.nc" "${BDY_DIR}/wrfbdy_d01_mem${m}" "${md}/bdy"
+   "${DA}/refit_member_bdy.sh" "${md}/start_d01.nc" "${BDY_DIR}/wrfbdy_d01_mem${m}" "${md}/bdy" "${BDY_RECORDS:-0}"
    cp "${md}/bdy/wrfbdy_d01" "${mo}/wrfbdy_d01"
    cp "${md}/bdy/update_wrf_bc.log" "${mo}/"
    touch "${mo}/update.done"

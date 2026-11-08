@@ -6,7 +6,8 @@ Usage: .venv/bin/python scripts/da/build_member_bdy.py <exp_dir> [--start 2025-0
            [--no-hydrostatic-ph]
 
 1. Subset: copies the records starting at --start, --start + 1 h, ... (--hours of them) from
-   exp_dir/mean/wrfbdy_d01 into exp_dir/bdy/wrfbdy_d01_mean_<start>_<hours>h (created once).
+   exp_dir/mean/wrfbdy_d01 into exp_dir/bdy/wrfbdy_d01_mean_<start>_<hours>h (created once;
+   subset_bdy.make_subset).
 2. For each member and each record h: writes small temporary states (only the fields pert_wrf_bc
    reads) for mean_h + pert and mean_(h+1) + pert, with T = THM and QVAPOR >= 0, and PH = mean PH +
    the hydrostatic PH increment from the perturbed MU, THM and QVAPOR (check_hydrostatic_balance.py;
@@ -34,42 +35,13 @@ import netCDF4
 import numpy as np
 
 from check_hydrostatic_balance import Grid, read_state
+from subset_bdy import make_subset  # defined here until 2026-11-07
 
 PERT_FIELDS = ["U", "V", "THM", "QVAPOR", "MU"]
 STATE_FIELDS = ["Times", "U", "V", "W", "PH", "T", "QVAPOR", "MU", "MUB",
                 "MAPFAC_U", "MAPFAC_V", "MAPFAC_M"]
 PERT_WRF_BC = "/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/DART/models/wrf/work/pert_wrf_bc"
 FMT = "%Y-%m-%d_%H:%M:%S"
-
-
-def times(ds):
-    return [b"".join(t).decode() for t in np.asarray(ds["Times"][:])]
-
-
-def make_subset(src_path, out_path, start, hours):
-    """Copy records start .. start + hours - 1 h of a wrfbdy file (all variables, same storage)."""
-    with netCDF4.Dataset(src_path) as src:
-        all_times = times(src)
-        first = all_times.index(start)
-        recs = slice(first, first + hours)
-        if len(all_times[recs]) != hours:
-            raise SystemExit(f"{src_path} has only {len(all_times) - first} records from {start}")
-        tmp = out_path + ".tmp"
-        with netCDF4.Dataset(tmp, "w", format=src.data_model) as out:
-            out.setncatts({a: src.getncattr(a) for a in src.ncattrs()})
-            for name, dim in src.dimensions.items():
-                out.createDimension(name, None if dim.isunlimited() else len(dim))
-            for name, var in src.variables.items():
-                filt = var.filters() or {}
-                chunks = var.chunking()
-                v = out.createVariable(name, var.dtype, var.dimensions,
-                                       zlib=bool(filt.get("zlib")), complevel=filt.get("complevel") or 4,
-                                       shuffle=bool(filt.get("shuffle")),
-                                       chunksizes=None if chunks == "contiguous" else chunks)
-                v.setncatts({a: var.getncattr(a) for a in var.ncattrs()})
-                v[:] = var[recs] if var.dimensions[0] == "Time" else var[:]
-    os.replace(tmp, out_path)
-    print(f"subset: records {first}..{first + hours - 1} ({start}, {hours} h) -> {out_path}")
 
 
 def write_state(mean_path, pert_path, out_path, hydrostatic_ph=True):
@@ -127,6 +99,7 @@ def build_member(args, mem, subset_path, hour_times):
         f.write("&utilities_nml\n   termlevel = 1,\n   logfilename = 'dart_log.out',\n"
                 "   nmlfilename = 'dart_log.nml',\n   write_nml = 'file',\n/\n")
     log = []
+    this_path, next_path = os.path.join(work, "wrfinput_this"), os.path.join(work, "wrfinput_next")
     for h in range(args.hours):
         states = []
         for k in (h, h + 1):
@@ -135,8 +108,13 @@ def build_member(args, mem, subset_path, hour_times):
             pert_path = None if mem == 0 else \
                 os.path.join(args.exp_dir, args.pert_template.format(mem=mem, hour=k))
             states.append((mean_path, pert_path))
-        write_state(*states[0], os.path.join(work, "wrfinput_this"), not args.no_hydrostatic_ph)
-        write_state(*states[1], os.path.join(work, "wrfinput_next"), not args.no_hydrostatic_ph)
+        # The state at hour h was written as record h - 1's next state from the same mean file and
+        # perturbation (pert_wrf_bc only reads it), so it is reused (since 2026-11-07; halves the work).
+        if h == 0:
+            write_state(*states[0], this_path, not args.no_hydrostatic_ph)
+        else:
+            os.replace(next_path, this_path)
+        write_state(*states[1], next_path, not args.no_hydrostatic_ph)
         res = subprocess.run([args.pert_wrf_bc], cwd=work, capture_output=True, text=True)
         with open(os.path.join(work, f"pert_wrf_bc_{h:02d}.log"), "w") as f:
             f.write(res.stdout + res.stderr)

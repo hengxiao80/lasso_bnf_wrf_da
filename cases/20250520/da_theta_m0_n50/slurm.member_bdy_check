@@ -1,0 +1,34 @@
+#!/bin/bash
+# Check of the 50 member boundary files (notes/fulltest_steps.md A6), after slurm.member_bdy:
+# scripts/da/check_member_bdy.py (pilot step 6 gate): the zero-perturbation refit against the real.exe records;
+# per member, only the refit fields changed, moisture non-negative, consecutive records join up; the member
+# spread and the member mean's offset from the mean file.
+#   sbatch slurm.member_bdy_check
+# Resources, from measurements (2026-11-07): one member's check took 163 s and the U spread over 5 members
+# 28 s in one process on the login node (peak 4.3 GB); the refit check 54 s. One process would need ~2.75 h
+# (50 x 163 s + 6 fields x ~280 s + 54 s); here 25 processes (--jobs 25, ~108 GB at that peak). The limit,
+# 4 h, is above the one-process time; how much the processes slow each other on GPFS is not measured. Results
+# are printed as each finishes (the first run, job 1194824: one process, buffered output, ~480 GB read, cut
+# off at its 2-h limit with nothing printed). Measured in job 1194825 (2026-11-07, AMD EPYC 7713 node, as the
+# login node): 12 min in all; member checks 76-171 s each with 25 in parallel, spreads 303 s per 3-D field,
+# refit check 76 s, peak 4.3 GB per process.
+#SBATCH --job-name=bdychk
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=04:00:00
+#SBATCH --nodes=1
+#SBATCH --output=logs/slurm.member_bdy_check.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_DIR=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50
+
+date
+lscpu | grep -E 'Model name|^CPU\(s\)'
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+export OMP_NUM_THREADS=1
+/usr/bin/time -f 'check: %e s, max RSS %M kB' ${PROJECT_DIR}/.venv/bin/python -u \
+   ${PROJECT_DIR}/scripts/da/check_member_bdy.py ${EXP_DIR} --hours 32 --nmem 50 --jobs 25
+status=$?
+date
+exit ${status}

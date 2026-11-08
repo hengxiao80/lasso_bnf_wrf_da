@@ -80,6 +80,11 @@ MRMS_INFLATION=${MRMS_INFLATION:-}
 # Recorded in settings.txt for MRMS_INFLATION=both; ignored otherwise.
 MRMS_PASS2_DAMPING=${MRMS_PASS2_DAMPING:-1}
 BDY_DIR=${EXP_DIR}/bdy                       # pristine wrfbdy_d01_memNNN (A6), never modified
+# Records in each cycle's refit copy of a member's boundary file (refit_member_bdy.sh, A6 option A, user
+# 2026-11-07): the record holding the analysis time and the next one, extracted from the pristine file's 32
+# (05-20 00Z to 05-21 07Z), so a cycle writes and saves ~0.3 GB per member instead of ~4.8 GB. The 00Z cold
+# start reads the pristine file itself. Unset (5-member experiment): a copy of the whole file.
+BDY_RECORDS=2
 DART_WORK=${SOFTWARE_DIR}/DART/models/wrf/work
 SEC_TABLE=${SOFTWARE_DIR}/DART/assimilation_code/programs/gen_sampling_err_table/work/sampling_error_correction_table.nc
 # Filter's wrfinput_d01 (grid, and the template for every state variable's shape, so it must hold every

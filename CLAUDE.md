@@ -161,6 +161,11 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   `Core/26.10`: its paths have Lmod priorities that keep them ahead of the `intel/20.0.4` directory, so
   `openmpi/4.0.4` and `hdf5` resolve to their gcc-8.3.1 builds and `wrf.exe` misses `libhdf5hl_fortran.so.100`.
   OLCF has not documented the change yet. Details and checks: `notes/cirrus_modules_core.md`.
+- **Login nodes allow 32 GB of memory per user** (cgroup; the OOM killer stops the largest process), and files
+  in `/tmp` (tmpfs) count against it. Netcdf4-python keeps a chunk cache per variable until a file is closed, so
+  a script that keeps many netCDF-4 files open, or reads all variables of a wrfbdy, can reach tens of GB: open
+  one file at a time and use `set_var_chunk_cache(size=0)` where chunks are read once (2026-11-07,
+  `notes/fulltest_steps.md` A5/A6).
 - The user's shell aliases `ls` with `-F`, so `ls` output has `@`/`*` suffixes. Use `find` or
   `command ls` in scripts. This once created dozens of broken symlinks.
 - Claude Code replays a shell snapshot taken at session start, so `~/.bashrc` edits do not apply

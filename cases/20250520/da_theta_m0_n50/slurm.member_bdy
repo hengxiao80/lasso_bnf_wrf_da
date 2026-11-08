@@ -1,0 +1,44 @@
+#!/bin/bash
+# Per-member lateral boundary files for the 50-member full test (notes/fulltest_steps.md A6): 32 hourly
+# records, 05-20 00Z to 05-21 07Z (the last cycle, 05-21 06:00 -> 06:15, needs the 06Z record and, as each
+# cycle's 2-record copy holds the next one too, 07Z), option A of Q5 (each member's initial perturbation at
+# every hour). scripts/da/build_member_bdy.py runs the patched pert_wrf_bc per member and record on a copy
+# of the 32-record mean subset bdy/wrfbdy_d01_mean_2025-05-20_00_32h, which is made beforehand
+# (subset_bdy.py, login node) so the tasks don't race to create it. Adapted from the pilot's
+# da_theta_m0_n5/slurm.member_bdy.
+# Array: task 0 = the zero-perturbation refit (bdy/wrfbdy_d01_refit_mean; the builder's test, which must
+# reproduce the real.exe records); tasks 1-5 = members 10k-9 .. 10k, 10 at a time on the node (5.6 GB
+# peak per worker in the regression run of 2026-11-07). Measured in job 1194808 (2026-11-07): 65-70 s per
+# member record, 36.5-37.7 min per member task; the zero-perturbation refit 31 s per record, 17 min.
+# The check is a separate job.
+#   sbatch --array=0-5 slurm.member_bdy
+#   sbatch --dependency=afterok:<array job id> slurm.member_bdy_check
+# Serial programs only, one node per task; no MPI and no UCX setting.
+#SBATCH --job-name=bdy520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=01:30:00
+#SBATCH --nodes=1
+#SBATCH --output=logs/slurm.member_bdy.%A_%a.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_DIR=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50
+PY=${PROJECT_DIR}/.venv/bin/python
+HOURS=32
+task=${SLURM_ARRAY_TASK_ID:?submit as an array, --array=0-5}
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+export OMP_NUM_THREADS=1
+ulimit -s unlimited
+set -e
+[ -s ${EXP_DIR}/bdy/wrfbdy_d01_mean_2025-05-20_00_${HOURS}h ] || { echo "no 32-record mean subset"; exit 1; }
+
+if [ "${task}" -eq 0 ]; then
+   ${PY} ${PROJECT_DIR}/scripts/da/build_member_bdy.py ${EXP_DIR} --hours ${HOURS} --zero-pert
+else
+   ${PY} ${PROJECT_DIR}/scripts/da/build_member_bdy.py ${EXP_DIR} --hours ${HOURS} \
+      --members $(seq $((10 * task - 9)) $((10 * task))) --jobs 10
+fi
+date
