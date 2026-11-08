@@ -116,10 +116,13 @@ FILTER_TASKS_PER_NODE=${FILTER_TASKS_PER_NODE:-32}
 # extraction and filter) checks the members in CHECK_WORKERS processes. B3's 00:15 cycle on the login node
 # (2026-11-08): 477 s before the one-pass change, then 359 s with 1 process, 115 s with 4, 80 s with 8.
 CHECK_WORKERS=8
-# Time limits for B3: measured times with margins chosen by judgment (fulltest_steps.md B2): a WRF task ~3.9 x
-# the 2-node segment of C1 (308-309 s, one member alone); the filter job ~6 x its measured parts (~290 s; the
-# check of the previous cycle at 50 members not measured). D1's limits come from B3's measured maxima.
-WRF_TASK_TIME=00:20:00
+# Time limits for D1 (user, 2026-11-08; B3 had 20 and 30 min): 30 min for both, ~4.8 x B3's longest times, a
+# margin chosen by judgment (fulltest_steps.md D1, with what B3 did not measure). WRF task: B3's longest 6:14
+# (cold start, member 8; restart segments at most 6:00). Filter job: B3's F(00:15) 6:19, with check_cycle.py of
+# the previous cycle now beside extraction and filter (80 s on the login node); the run's final 1-node job
+# (check only) uses the same limit. A WRF task killed by the limit gets the chain's one automatic retry; a
+# filter job stops it.
+WRF_TASK_TIME=00:30:00
 FILTER_JOB_TIME=00:30:00
 
 # 1: wrfrst_dart.py insert --hydrostatic-ph (PH from the analyzed MU, THM, QVAPOR instead of

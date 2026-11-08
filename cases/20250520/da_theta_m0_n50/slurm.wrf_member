@@ -7,7 +7,7 @@
 # Environment as slurm.wrf_nodes (C1) and slurm.cycle's WRF settings: UCX_TLS=self,sm,ud, OMP_* for 8 threads.
 #SBATCH -A cli120
 #SBATCH --partition=batch_all
-#SBATCH --time=00:20:00
+#SBATCH --time=00:30:00
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=8
