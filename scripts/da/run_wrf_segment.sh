@@ -12,9 +12,11 @@
 #
 # Links the WRF run-time tables and wrf.exe into run_dir, links <wrfinput> as wrfinput_d01 and
 # <wrfbdy> as wrfbdy_d01 (WRF only reads them), writes namelist.input from
-# ${CONFIG_DIR}/namelist.input.wrf and copies ${CONFIG_DIR}/iofields_cycle.txt, then runs
-# nproc_x * nproc_y MPI ranks with srun (OpenMP threads from the calling job's environment,
-# including the wrf.exe UCX settings). Fails unless rsl.out.0000 ends in SUCCESS COMPLETE WRF.
+# ${CONFIG_DIR}/namelist.input.wrf and copies the runtime I/O file it names (iofields_filename), if any,
+# from ${CONFIG_DIR} (5-member experiment: iofields_cycle.txt; the 50-member one names none since
+# 2026-11-07, fulltest_steps.md B1), then runs nproc_x * nproc_y MPI ranks with srun (OpenMP threads
+# from the calling job's environment, including the wrf.exe UCX settings). Fails unless rsl.out.0000
+# ends in SUCCESS COMPLETE WRF.
 #
 # Exit guard (2026-10-21): in run 3, wrf.exe printed SUCCESS, had written everything, and then didn't exit
 # (27 min, cancelled by hand); most likely hcoll's teardown in MPI_FINALIZE, as for filter
@@ -49,7 +51,6 @@ else
    ln -sf "$(readlink -f "${wrfinput}")" wrfinput_d01
 fi
 ln -sf "$(readlink -f "${wrfbdy}")" wrfbdy_d01
-cp "${CONFIG_DIR}/iofields_cycle.txt" .
 
 sed -e "s/@SY@/${start:0:4}/; s/@SM@/${start:5:2}/; s/@SD@/${start:8:2}/" \
     -e "s/@SH@/${start:11:2}/; s/@SN@/${start:14:2}/" \
@@ -60,6 +61,12 @@ sed -e "s/@SY@/${start:0:4}/; s/@SM@/${start:5:2}/; s/@SD@/${start:8:2}/" \
     "${CONFIG_DIR}/namelist.input.wrf" > namelist.input
 if grep -q '@[A-Z]*@' namelist.input; then
    echo "run_wrf_segment.sh: unfilled placeholder in namelist.input" >&2; exit 1
+fi
+iof=$(sed -n "s/^ *iofields_filename *= *'\([^']*\)'.*/\1/p" namelist.input)
+if [ -n "${iof}" ]; then
+   [ -r "${CONFIG_DIR}/${iof}" ] || { echo "run_wrf_segment.sh: no ${CONFIG_DIR}/${iof} (iofields_filename)" >&2; exit 1; }
+   rm -f "${iof}"
+   cp "${CONFIG_DIR}/${iof}" .
 fi
 
 echo "$(date) wrf.exe ${start} -> ${end} in ${run_dir} ($((npx * npy)) ranks, restart=${restart})"

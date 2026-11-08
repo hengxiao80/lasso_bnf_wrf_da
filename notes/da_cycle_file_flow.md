@@ -1,6 +1,6 @@
 # DA cycle: how the member files are made and changed
 
-Which script creates, changes or reads each file that carries a member's state, from the hourly HRRR-based mean states to the next cycle's restart file. Written 2026-11-06 in session "fulltest: initial setup", from the scripts as they are for the 5-member runs (`theta_m0`, one-pass MRMS since run 5, `HYDROSTATIC_PH=1`), before any changes for the 50-member full test. One planned change is marked: the start-of-segment `wrfout` (`notes/fulltest_output_files.md` Sec. 1).
+Which script creates, changes or reads each file that carries a member's state, from the hourly HRRR-based mean states to the next cycle's restart file. Written 2026-11-06 in session "fulltest: initial setup", from the scripts as they are for the 5-member runs (`theta_m0`, one-pass MRMS since run 5, `HYDROSTATIC_PH=1`), before any changes for the 50-member full test. One change since then is marked: the start-of-segment `wrfout` and the default history stream in the 50-member experiment (`notes/fulltest_output_files.md` Sec. 1, `notes/fulltest_steps.md` B1, 2026-11-07).
 
 Not covered: the observation pipeline that writes `obs<OBS_NAME>/<t>/` (`make_cycle_obs.sh` and the converters; `notes/obs_expansion.md` Sec. 7–8), the two-pass MRMS path (`run<RUN>/filter_mrms/`, unused since run 5), and test jobs (`slurm.filter_gate`, `tests/`). The older `notes/da_workflow_layout.md` (2026-09-25) is the original plan and predates the true restarts.
 
@@ -97,8 +97,9 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
    | advance_member.sh -> run_wrf_segment.sh, in R/wrf/:
    |   wrfinput_d01 and wrfbdy_d01 linked in, restart = .false.,
    |   RESTART_INTERVAL = 15 min; WRF's run-time tables and
-   |   wrf.exe linked in; config/iofields_cycle.txt copied
-   |   (planned: dropped, default history stream only);
+   |   wrf.exe linked in; the iofields file the namelist names
+   |   copied (5-member: config/iofields_cycle.txt; 50-member:
+   |   none, default history stream only, since 2026-11-07);
    |   namelist.input from config/namelist.input.wrf
    | wrf.exe 00:00 -> 00:15 (cold start: start_em.F derives AL,
    |   P, ... from the input)
@@ -106,7 +107,8 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
  R/wrf/wrfrst_d01_<00:15>  --mv-->  R/wrfrst_d01_<00:15>
  R/wrf/wrfout_d01_<00:00>, wrfout_d01_<00:15>  --mv-->  O/memNNN/
    (O at 00:00; a cold start always writes history at its start)
-   (planned: keep only wrfout_d01_<00:00>, delete the 00:15 one)
+   (50-member, since 2026-11-07: only wrfout_d01_<00:00> kept,
+   the 00:15 one deleted)
  R/wrf/rsl.*.0000, namelist.input  --cp-->  O/memNNN/
 ```
 
@@ -221,10 +223,11 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
    v
  R/wrf/wrfrst_d01_<t+15>  --mv-->  R/                -> next cycle
  R/wrf/wrfout_d01_<t+15>  --mv-->  O/memNNN/
-   (planned: write_hist_at_0h_rst = .true., so the segment also
-   writes wrfout_d01_<t>, the analysis; keep that one and delete
-   wrfout_d01_<t+15>, which is still written because the history
-   alarm must ring at t + 15 for REFL_10CM in the restart)
+   (50-member, since 2026-11-07: write_hist_at_0h_rst = .true.,
+   so the segment also writes wrfout_d01_<t>, the analysis; that
+   one goes to O/memNNN/ instead, and wrfout_d01_<t+15>, still
+   written because the history alarm must ring at t + 15 for
+   REFL_10CM in the restart, is deleted)
  R/wrf/rsl.*.0000, namelist.input  --cp-->  O/memNNN/;
    O/memNNN/cfl_count.txt; O/memNNN/advance.done
  R/wrfrst_d01_<t> deleted (not at FIRST_CYCLE)

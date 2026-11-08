@@ -7,10 +7,14 @@
 # At FIRST_CYCLE: cold start from INIT_DIR/memNNN/wrfinput_d01 with the pristine bdy/wrfbdy_d01_memNNN
 # (built from that same state, so no refit is needed). Afterwards: true restart from
 # run/memNNN/wrfrst_d01_<t> (analysis inserted, post_filter.sh) with the refit run/memNNN/bdy/wrfbdy_d01.
-# The segment runs in run/memNNN/wrf/ (run_wrf_segment.sh) and writes wrfout and wrfrst at <t> + 15 min.
-# Then: wrfout_d01_* and the rank-0 rsl files, namelist.input and the count of CFL lines over all
-# ranks go to output/<t>/memNNN/; the new wrfrst moves to run/memNNN/; output/<t>/memNNN/advance.done
-# is written; and only then the member's wrfrst at <t> is deleted (Q10: latest wrfrst only).
+# The segment runs in run/memNNN/wrf/ (run_wrf_segment.sh) and writes wrfout and wrfrst at <t> + 15 min
+# (and wrfout at <t>: at the cold start always, after a restart if the namelist sets write_hist_at_0h_rst).
+# Then the wrfout files go to output/<t>/memNNN/: if the namelist sets write_hist_at_0h_rst (50-member
+# experiment since 2026-11-07, fulltest_output_files.md Sec. 1), only wrfout_d01_<t>, the state the
+# segment starts from, and the end-of-segment one is deleted; otherwise all of them. The rank-0 rsl
+# files, namelist.input and the count of CFL lines over all ranks go there too; the new wrfrst moves to
+# run/memNNN/; output/<t>/memNNN/advance.done is written; and only then the member's wrfrst at <t> is
+# deleted (Q10: latest wrfrst only).
 set -eu
 
 exp_sh=$1 t=$2 m=$3
@@ -43,7 +47,13 @@ SRUN_OPTS="-N ${MEMBER_NODES} --ntasks-per-node=$((NPROC_X * NPROC_Y / MEMBER_NO
 [ -f "${md}/wrf/wrfrst_d01_${next_ft}" ] || die "member ${m}: no wrfrst_d01_${next_ft}"
 
 cd "${md}/wrf"
-mv wrfout_d01_* "${mo}/"
+if grep -qiE '^ *write_hist_at_0h_rst *= *\.?t' namelist.input; then
+   [ -f "wrfout_d01_${ft}" ] || die "member ${m}: no start-of-segment wrfout_d01_${ft}"
+   mv "wrfout_d01_${ft}" "${mo}/"
+   rm -f wrfout_d01_*
+else
+   mv wrfout_d01_* "${mo}/"
+fi
 cp rsl.out.0000 rsl.error.0000 namelist.input "${mo}/"
 { grep -il cfl rsl.error.* | wc -l; grep -ih cfl rsl.error.* | wc -l; } | paste -sd' ' \
    | awk '{print "ranks with cfl lines:", $1, " cfl lines:", $2}' > "${mo}/cfl_count.txt"

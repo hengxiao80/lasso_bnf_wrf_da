@@ -1,0 +1,128 @@
+#!/bin/bash
+# B1 test (notes/fulltest_steps.md B1): the 50-member output settings on one 15-min restart segment.
+# Run 5 _conv_refl_f2 member 001 (da_theta_m0_n5) from 01:15 to 01:30: its wrfrst at 01:15 (written by WRF at
+# the end of the 01:00 segment, never analyzed) and its 01:00 refit wrfbdy, read in place (run 5 is finished;
+# run_wrf_segment.sh only links them). Two segments on 8 nodes as a cycling member (16 x 8 ranks x 8 threads,
+# run_wrf_segment.sh with its exit guard, hcoll on, slurm.cycle's environment):
+#   new/: the 50-member namelist (write_hist_at_0h_rst = .true., no iofields file);
+#   old/: the 5-member namelist (iofields_cycle.txt, no history at the start), as run 5 ran.
+# Checks (scripts/da/compare_nc.py; output in tests/b1_output/<job>/, files kept until reviewed):
+#   1. the files each segment wrote (new: wrfout at 01:15 and 01:30, wrfrst at 01:30; nothing else);
+#   2. wrfrst at 01:30, new vs old: bit-identical (the history settings must not change the integration);
+#   3. wrfout at 01:30, new vs old: the default-stream variables identical, the 65 iofields ones only in old;
+#   4. new wrfout at 01:15 (start of segment) vs the wrfrst at 01:15 it was written from (--suffix2);
+#   5. new wrfout at 01:15 vs run 5's end-of-segment wrfout at 01:15 (output_conv_refl_f2/202505200100/mem001/),
+#      which is bit-identical to that wrfrst in its 281 common variables (login node, 2026-11-07).
+# The first wrf.exe job under the Core/A100 module setup (env_wrf.sh since 2026-10-30): ldd check first.
+# new/ also serves as C1's 8-node point (timings from rsl.error.0000 at the end).
+#   sbatch slurm.b1_output_test
+# Limit: two segments took 150-152 s each in the hcoll test (job 1054907, same segment of run 1, hcoll on; cmp of
+# wrfout + wrfrst 6-7 s); compare_nc.py on run 5's 01:15 wrfout vs wrfrst took 19 s on the login node. About
+# 6-8 min expected; 30 min allows for slower file reads.
+#SBATCH --job-name=b1out520
+#SBATCH -A cli120
+#SBATCH --partition=batch_all
+#SBATCH --time=00:30:00
+#SBATCH --nodes=8
+#SBATCH --ntasks-per-node=16
+#SBATCH --cpus-per-task=8
+#SBATCH --output=logs/slurm.b1_output_test.%j.out
+#SBATCH --exclusive
+
+PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
+EXP_NEW=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh
+EXP_OLD=${PROJECT_DIR}/cases/20250520/da_theta_m0_n5/config/experiment.sh
+source ${EXP_NEW}
+source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # log
+PY=${PROJECT_DIR}/.venv/bin/python
+DA=${PROJECT_DIR}/scripts/da
+RUN5=${CASE_DIR}/da_theta_m0_n5
+SRC=${RUN5}/run_conv_refl_f2/mem001
+START=2025-05-20_01:15:00
+ST_FT=2025-05-20_01_15_00
+END_FT=2025-05-20_01_30_00
+RST=${SRC}/wrfrst_d01_${ST_FT}
+BDY=${SRC}/bdy/wrfbdy_d01
+WRFOUT5=${RUN5}/output_conv_refl_f2/202505200100/mem001/wrfout_d01_${ST_FT}
+G=${EXP_DIR}/tests/b1_output/${SLURM_JOB_ID}
+
+date
+source ${PROJECT_DIR}/scripts/env_wrf.sh
+module list 2>&1 | tail -n +2
+# as slurm.cycle
+export UCX_TLS=self,sm,ud
+export UCX_UD_MLX5_RX_QUEUE_LEN=16384
+export OMP_NUM_THREADS=8
+export OMP_PLACES=cores
+export OMP_PROC_BIND=true
+export OMP_STACKSIZE=64000000
+ulimit -s 64000000
+
+echo "nodes: ${SLURM_JOB_NODELIST}"
+missing=$(ldd ${WRF_RUN_DIR}/wrf.exe | grep 'not found')
+[ -z "${missing}" ] || { echo "wrf.exe: libraries not found:"; echo "${missing}"; exit 1; }
+echo "ldd wrf.exe: all libraries found"
+for f in ${RST} ${BDY} ${WRFOUT5}; do [ -f ${f} ] || { echo "missing ${f}"; exit 1; }; done
+
+# wrf_timing <rsl.error.0000>: start-up, integration, steps, wrfout writes (number, s), restart write (s)
+wrf_timing() {
+   awk '/Timing for processing (restart file|lateral boundary)/ {init += $(NF-2)}
+        /Timing for main/ {integ += $(NF-2); n++}
+        /Timing for Writing wrfout/ {wo += $(NF-2); nwo++}
+        /Timing for Writing restart/ {rs += $(NF-2)}
+        END {printf "%6.1f %6.1f %5d %3d %6.1f %6.1f", init, integ, n, nwo, wo, rs}' "$1"
+}
+
+declare -A EXP=([new]=${EXP_NEW} [old]=${EXP_OLD})
+for v in new old; do
+   d=${G}/${v}
+   mkdir -p ${d}
+   log "=== ${v}: $(dirname ${EXP[$v]})/namelist.input.wrf"
+   SECONDS=0
+   SRUN_OPTS="-N 8 --ntasks-per-node=16 -c 8 --exact" RESTART=.true. RESTART_INTERVAL=15 \
+      ${DA}/run_wrf_segment.sh ${EXP[$v]} ${d} ${START} 900 ${RST} ${BDY} 16 8 > ${d}/segment.log 2>&1
+   rc=$?
+   echo ${SECONDS} > ${d}/wall_s.txt
+   cat ${d}/segment.log
+   log "${v}: status ${rc}, ${SECONDS} s$([ ! -f ${d}/wrf_exit_guard.txt ] || echo ' (exit guard fired)')"
+   [ ${rc} = 0 ] || { echo "segment ${v} failed, see ${d}"; exit 1; }
+   grep -il 'error\|warning' ${d}/rsl.error.0000 > /dev/null && grep -i 'error\|warning' ${d}/rsl.error.0000 | sort | uniq -c | head -20
+done
+
+echo
+echo "=== 1. files written by each segment (newer than its namelist.input; rsl files not listed)"
+for v in new old; do
+   echo "${v}: $(cd ${G}/${v} && find . -maxdepth 1 -type f -newer namelist.input ! -name 'rsl.*' ! -name '*.txt' \
+      ! -name '*.log' -printf '%f ' | tr ' ' '\n' | sort | tr '\n' ' ')"
+done
+echo
+echo "=== 2. wrfrst at 01:30, new vs old"
+if cmp -s ${G}/new/wrfrst_d01_${END_FT} ${G}/old/wrfrst_d01_${END_FT}; then
+   echo "wrfrst_d01_${END_FT}: identical (cmp)"
+else
+   echo "wrfrst_d01_${END_FT}: differs (cmp); per variable:"
+   ${PY} ${DA}/compare_nc.py ${G}/new/wrfrst_d01_${END_FT} ${G}/old/wrfrst_d01_${END_FT}
+fi
+echo
+echo "=== 3. wrfout at 01:30, new vs old"
+${PY} ${DA}/compare_nc.py ${G}/new/wrfout_d01_${END_FT} ${G}/old/wrfout_d01_${END_FT}
+echo
+echo "=== 4. new wrfout at 01:15 (start of segment) vs the wrfrst at 01:15 it was written from"
+${PY} ${DA}/compare_nc.py --suffix2 ${G}/new/wrfout_d01_${ST_FT} ${RST}
+echo
+echo "=== 5. new wrfout at 01:15 vs run 5's end-of-segment wrfout at 01:15"
+${PY} ${DA}/compare_nc.py ${G}/new/wrfout_d01_${ST_FT} ${WRFOUT5}
+echo
+echo "=== sizes (bytes)"
+for f in ${G}/new/wrfout_d01_* ${G}/old/wrfout_d01_* ${WRFOUT5}; do
+   echo "$(stat -c %s ${f}) $(du -B1 ${f} | cut -f1) ${f#${CASE_DIR}/}"
+done | awk '{printf "%14d nominal %14d disk  %s\n", $1, $2, $3}'
+
+echo
+echo "=== timings (8 nodes, 16 x 8 ranks x 8 threads; s)"
+printf '%-4s %6s %6s %6s %5s %3s %6s %6s\n' run wall start integ steps nwo wrfout rst
+for v in new old; do
+   printf '%-4s %6s %s\n' ${v} $(cat ${G}/${v}/wall_s.txt) "$(wrf_timing ${G}/${v}/rsl.error.0000)"
+done
+date
+sacct -j ${SLURM_JOB_ID} --format=JobID%16,JobName%28,Elapsed,NNodes,NTasks,MaxRSS,State
