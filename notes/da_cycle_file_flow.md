@@ -1,14 +1,15 @@
 # DA cycle: how the member files are made and changed
 
-Which script creates, changes or reads each file that carries a member's state, from the hourly HRRR-based mean states to the next cycle's restart file. Written 2026-11-06 in session "fulltest: initial setup", from the scripts as they are for the 5-member runs (`theta_m0`, one-pass MRMS since run 5, `HYDROSTATIC_PH=1`), before any changes for the 50-member full test. One change since then is marked: the start-of-segment `wrfout` and the default history stream in the 50-member experiment (`notes/fulltest_output_files.md` Sec. 1, `notes/fulltest_steps.md` B1, 2026-11-07).
+Which script creates, changes or reads each file that carries a member's state, from the hourly HRRR-based mean states to the next cycle's restart file. Written 2026-11-06 in session "fulltest: initial setup", from the scripts of the 5-member runs (`theta_m0`, one-pass MRMS since run 5, `HYDROSTATIC_PH=1`); updated 2026-11-08 for the 50-member full test as D1 runs it. The files and the steps that make them are the same in both experiments. Where the 50-member one differs (which job runs a step, the initial members' directory, the 2-record boundary refit, the start-of-segment `wrfout`, where the check runs), the text says "50-member" (`notes/fulltest_steps.md` B1–B3). Its directories and jobs: `notes/fulltest_workflow.md`.
 
-Not covered: the observation pipeline that writes `obs<OBS_NAME>/<t>/` (`make_cycle_obs.sh` and the converters; `notes/obs_expansion.md` Sec. 7–8), the two-pass MRMS path (`run<RUN>/filter_mrms/`, unused since run 5), and test jobs (`slurm.filter_gate`, `tests/`). The older `notes/da_workflow_layout.md` (2026-09-25) is the original plan and predates the true restarts.
+Not covered: the observation pipeline that writes `obs<OBS_NAME>/<t>/` (`make_cycle_obs.sh` and the converters; `notes/obs_expansion.md` Sec. 7–8), the two-pass MRMS path (`run<RUN>/filter_mrms/`, unused since run 5), and test jobs. `notes/da_workflow_layout.md` (2026-09-25) is the original plan and predates the true restarts; `notes/fulltest_workflow.md` describes the 50-member setup.
 
 ## Abbreviations
 
 In the diagrams and lists:
 
-- `E/` = `cases/20250520/da_theta_m0/` (the experiment directory; since 2026-11-06 a link to `da_theta_m0_n5/`, whose `mean/`, `perts/bank/`, `perts/work/` and `obs*/` are links into `da_common_theta_m0/`, shared with `da_theta_m0_n50/`; `CLAUDE.md`, Layout)
+- `E/` = the experiment directory: `cases/20250520/da_theta_m0_n5/` (5-member; also reached through the link `da_theta_m0`) or `cases/20250520/da_theta_m0_n50/` (50-member). Both link `mean/`, `perts/bank/`, `perts/work/` and `obs*/` into `da_common_theta_m0/` (`CLAUDE.md`, Layout)
+- `INIT_DIR` = the initial members' directory: `E/run/` (5-member), `E/init/` (50-member, since 2026-11-08)
 - `R/` = `E/run<RUN>/memNNN/` (one member's working files)
 - `F/` = `E/run<RUN>/filter/` (filter's run directory)
 - `O/` = `E/output<RUN>/<t>/` (the cycle's saved output)
@@ -53,6 +54,8 @@ The mean states, the perturbations and filter's grid file. All runs (`RUN_NAME`s
          with REFL_10CM added by make_grid_file.py (deleted)
 ```
 
+50-member: the job scripts of these steps are in `E/setup/` (`setup/slurm.make_mean_icbc`, `setup/slurm.pert_draw`), and the bank has 150 draws (the 5-member pilot used 15); `mean/` and the bank are shared by both experiments.
+
 In the cycle, `GRID_FILE` is read only through that link. The observation scripts take the grid from files with the same grid and terrain: `make_cycle_obs.sh` sets its own `GRID_FILE` to the mean 00Z `wrfinput` (the same file since 2026-11-06) and links that into its work directory as `wrfinput_d01` for `wrf_dart_obs_preprocess`, and `make_cycle_mesonet.sh` passes `experiment.sh`'s `GRID_FILE` to `select_mesonet_cycle.py` for the terrain height and the projection.
 
 ## 2. The members' cold-start files
@@ -68,7 +71,8 @@ Also built once and shared by all runs. Neither file is ever changed afterwards.
    |   QVAPOR clipped at 0; PH + hydrostatic increment from the
    |   perturbed MU THM QVAPOR; everything else as in the mean file
    v
- E/run/memNNN/wrfinput_d01                 (+ E/run/initial_members.txt)
+ INIT_DIR/memNNN/wrfinput_d01   (+ INIT_DIR/initial_members.txt)
+   (50-member: E/init/, make_initial_members.py --init-subdir init)
 ```
 
 ```
@@ -87,12 +91,14 @@ Also built once and shared by all runs. Neither file is ever changed afterwards.
  E/bdy/wrfbdy_d01_memNNN                   pristine member boundaries
 ```
 
+50-member (`setup/slurm.member_bdy`, `fulltest_steps.md` A6): `--hours 32`, the records of 05-20 00Z to 05-21 07Z, so the subset is `E/bdy/wrfbdy_d01_mean_2025-05-20_00_32h` and each member file 4.75 GB. `E/bdy/wrfbdy_d01_refit_mean` is the zero-perturbation refit A6 checked the tools with; no cycle reads it.
+
 ## 3. The first segment (cold start)
 
-At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
+At `FIRST_CYCLE` there is no analysis, only the advance of the members: by `cycle_job.sh` in the 5-member runs; in the 50-member chain by the WRF array A(00:00), one task per member on 2 nodes (`slurm.wrf_member` → `advance_member.sh`), whose Slurm output goes to `O/memNNN/slurm.wrf_member.<job>_<task>.out`.
 
 ```
- E/run/memNNN/wrfinput_d01     E/bdy/wrfbdy_d01_memNNN
+ INIT_DIR/memNNN/wrfinput_d01   E/bdy/wrfbdy_d01_memNNN
    |
    | advance_member.sh -> run_wrf_segment.sh, in R/wrf/:
    |   wrfinput_d01 and wrfbdy_d01 linked in, restart = .false.,
@@ -113,6 +119,8 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
 ```
 
 ## 4. One analysis cycle at t (from 00:15)
+
+50-member: Sec. 4.1 and 4.2 run in the filter job F(t) on 40 nodes (`slurm.filter_step` → `filter_step.sh`); its per-member steps get 64 CPUs each (`MEMBER_STEP_CPUS`), so at most 2 run on a node. Sec. 4.3's advance is the WRF array A(t), which starts once F(t) has ended.
 
 ### 4.1 Prior extraction and filter
 
@@ -173,7 +181,7 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
 
 ### 4.2 Members: analysis into the restart file, boundary refit
 
-`post_filter.sh members` runs `post_filter.sh member` for each member as a 1-node `srun` step, all at once:
+`post_filter.sh members` runs `post_filter.sh member` for each member as a 1-node `srun` step, all at once (50-member: only after `check_cycle.py` has passed for cycle t − 15, Sec. 4.3, so a failed check stops the run before any restart file at t changes):
 
 ```
  R/dart_d01.nc                            filter's analysis
@@ -198,7 +206,9 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
  R/start_d01.nc
    |
    | refit_member_bdy.sh, in R/bdy/:
-   |   wrfbdy_d01 = fresh copy of E/bdy/wrfbdy_d01_memNNN;
+   |   wrfbdy_d01 = fresh copy of E/bdy/wrfbdy_d01_memNNN
+   |   (50-member, BDY_RECORDS = 2: only the record holding t
+   |   and the next one, by subset_bdy.py, log subset_bdy.log);
    |   wrfinput_d01 -> R/start_d01.nc (link, removed after);
    |   input.nml (&utilities_nml only); update_wrf_bc makes the
    |   record holding t start from start_d01.nc at t, with
@@ -237,9 +247,11 @@ At `FIRST_CYCLE` there is no analysis; `cycle_job.sh` only advances the members.
  O/status = complete
 ```
 
+Where the check runs: 5-member, `cycle_job.sh` runs it right after the advance. 50-member, the next filter job F(t + 15) runs it in the background on its first node, with 8 processes (`CHECK_WORKERS`), beside its own extraction and filter; it writes `O/status = complete` when the check passes and stops the run when it fails, in both cases before any restart file at t + 15 changes (Sec. 4.2). The run's last cycle is checked by a 1-node job that does nothing else.
+
 ## 5. Summary
 
-- **Files WRF reads that hold a member's state are changed in two places only:** `make_initial_members.py` creates `E/run/memNNN/wrfinput_d01` once, and `wrfrst_dart.py insert` changes `R/wrfrst_d01_<t>` in place once per cycle. Otherwise `wrf.exe` writes a new restart file each segment; every other step only reads these files.
+- **Files WRF reads that hold a member's state are changed in two places only:** `make_initial_members.py` creates `INIT_DIR/memNNN/wrfinput_d01` once, and `wrfrst_dart.py insert` changes `R/wrfrst_d01_<t>` in place once per cycle. Otherwise `wrf.exe` writes a new restart file each segment; every other step only reads these files.
 - **`R/dart_d01.nc` is changed twice per cycle before `insert` reads it:** by filter, then by `qnrain`. `O/memNNN/prior_d01.nc` is a copy taken before filter; `O/memNNN/analysis_d01.nc` a copy taken after `qnrain`.
 - **The pristine member boundaries `E/bdy/wrfbdy_d01_memNNN` are never modified.** Each cycle refits a fresh copy in `R/bdy/`.
 - **Overwritten every cycle:** `R/dart_d01.nc`, `R/start_d01.nc`, `R/bdy/`, `R/wrf/` and `F/`. Only the latest `R/wrfrst_d01_<t>` is kept. What is saved per cycle is in `O/` (sizes: `notes/fulltest_output_files.md` Sec. 3).
