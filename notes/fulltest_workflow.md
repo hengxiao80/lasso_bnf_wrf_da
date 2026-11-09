@@ -125,14 +125,16 @@ F(last + 15)  1 node: A(last) all advanced? its check; stop
 
 ## 3. Running
 
-D1 is started from the repository root (`RUN_NAME` still to choose); with `--dry-run` added, the command prints the `sbatch` commands and writes nothing:
+The production run is one continuous run, `_conv_refl_f2` (user, 2026-11-09), stopped at each gate D1–D4 (`fulltest_steps.md` Part D). D1 is started from the repository root; with `--dry-run` added, the command prints the `sbatch` commands and writes nothing:
 
 ```
-RUN_NAME=<name> OBS_NAME=_meso_a_calmkeep_mrms \
+RUN_NAME=_conv_refl_f2 OBS_NAME=_meso_a_calmkeep_mrms \
   MRMS_FILTER=one_pass scripts/da/chain_submit.sh \
   cases/20250520/da_theta_m0_n50/config/experiment.sh \
   202505200000 202505200100
 ```
+
+Each later gate is the same command with the next first and last analysis times (D2: `202505200115 202505200600`).
 
 - **What `chain_submit.sh` checks first**: a non-empty `RUN_NAME`; `run_preflight` (`cycle_lib.sh`): observation files for every analysis time, the cycle before `<first>` complete, and the settings against `output_<name>/settings.txt` (written on the first start); no job of the run already queued or running.
 - **What it submits**: from the markers of the first cycle t0 ≥ `<first>` not `complete`: every member advanced → F(t0 + 15); analysis done or t0 = 00:00, some members not advanced → A(t0) for those members and F(t0 + 15) after it; otherwise F(t0).

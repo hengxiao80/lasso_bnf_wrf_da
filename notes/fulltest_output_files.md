@@ -82,6 +82,6 @@ The per-member files of Sec. 3.2 measured in C3: 1.54 GB each, as above. C3 repo
 
 ⁴ As written: B3's two cycles measured (513 and 184 GiB); the gates are those two numbers times the number of cycles. The nominal sizes above add up to ~570 GB per analysis cycle.
 ⁵ Only the 50 initial-state `wrfout` files.
-⁶ Includes the first hour if the 6-h run continues the 1-h run.
+⁶ Including the first hour: D2 continues D1's run (one continuous run, user 2026-11-09).
 
 Not counted above: each run's working files in `run<RUN>/`, the latest `wrfrst` per member (13.1 GB nominal), `dart_d01.nc`, `start_d01.nc`, the refit copy, WRF's run directory with the Thompson tables, and filter's run directory: 769 GiB = 826 GB in B3. They are replaced cycle by cycle and don't grow with the run.
