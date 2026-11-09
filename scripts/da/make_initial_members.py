@@ -1,9 +1,10 @@
 """Write the initial ensemble members (pilot step 5).
 
 Usage: .venv/bin/python scripts/da/make_initial_members.py <exp_dir> [--time 2025-05-20_00:00:00]
-                                                          [--nmem 5] [--no-hydrostatic-ph]
+                                                          [--nmem 5] [--no-hydrostatic-ph] [--init-subdir run]
 
-For each member m, writes exp_dir/run/memNNN/wrfinput_d01 = mean wrfinput at --time
+For each member m, writes exp_dir/<init-subdir>/memNNN/wrfinput_d01 (INIT_DIR in experiment.sh; init-subdir
+`run` in the 5-member experiment, `init` in the 50-member one since 2026-11-08) = mean wrfinput at --time
 (exp_dir/mean/wrfinput_d01_<time>) + exp_dir/perts/members/pert_memNNN.nc for U, V, THM, QVAPOR, MU
 (already scaled and centered by assign_perturbations.py). Then sets T = THM (theta_m0: the boundary
 tools read T; see notes/da_5member_pilot_steps.md step 2) and clips QVAPOR >= 0. Unless
@@ -14,7 +15,7 @@ perturbed MU, THM and QVAPOR: the bank carries no PH, and WRF keeps PH as read o
 tutorial's add_bank_perts.ncl and the IC part of init_ensemble_var.sh.
 
 Prints, per member, the number of clipped QVAPOR points, and then the ensemble spread by level
-compared with the spread of the perturbation files, and writes exp_dir/run/initial_members.txt.
+compared with the spread of the perturbation files, and writes exp_dir/<init-subdir>/initial_members.txt.
 """
 
 import argparse
@@ -100,7 +101,9 @@ def main():
     p.add_argument("--time", default="2025-05-20_00:00:00")
     p.add_argument("--nmem", type=int, default=5)
     p.add_argument("--no-hydrostatic-ph", action="store_true")
+    p.add_argument("--init-subdir", default="run", help="subdirectory of exp_dir for the members (INIT_DIR)")
     args = p.parse_args()
+    init_dir = os.path.join(args.exp_dir, args.init_subdir)
 
     mean_path = os.path.join(args.exp_dir, "mean", "wrfinput_d01_" + args.time.replace(":", "_"))
     pert_paths = [os.path.join(args.exp_dir, "perts", "members", f"pert_mem{m:03d}.nc")
@@ -108,7 +111,7 @@ def main():
     out_paths = []
     lines = [f"# member bank_draw centered clipped_qvapor ph_incr_rms_m   (mean {mean_path})"]
     for m, pert_path in enumerate(pert_paths, start=1):
-        mem_dir = os.path.join(args.exp_dir, "run", f"mem{m:03d}")
+        mem_dir = os.path.join(init_dir, f"mem{m:03d}")
         os.makedirs(mem_dir, exist_ok=True)
         out_path = os.path.join(mem_dir, "wrfinput_d01")
         nclip, info, dph_rms = write_member(mean_path, pert_path, out_path, not args.no_hydrostatic_ph)
@@ -116,7 +119,7 @@ def main():
               f" hydrostatic PH increment RMS {dph_rms:.2f} m -> {out_path}")
         lines.append(f"{m:3d} {info['draw']:3d} {info['centered']} {nclip} {dph_rms:.2f}")
         out_paths.append(out_path)
-    with open(os.path.join(args.exp_dir, "run", "initial_members.txt"), "w") as f:
+    with open(os.path.join(init_dir, "initial_members.txt"), "w") as f:
         f.write("\n".join(lines) + "\n")
     spread_by_level(out_paths, mean_path, pert_paths)
 

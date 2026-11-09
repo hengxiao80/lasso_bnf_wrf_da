@@ -9,8 +9,8 @@
 #   3. scripts/da/check_wrfda_draw.py: report in perts/work/draw_NNN/check_wrfda_draw.txt.
 # One node, 16 MPI ranks, as every draw of the bank: the rank enters WRFDA's seed, so a draw is
 # reproducible only with 16 ranks.
-#   mkdir -p logs; sbatch --array=16-150%30 slurm.pert_draw
-#   EXP_SH=<other experiment.sh> DRAW=<n> sbatch --output=logs/slurm.pert_draw.%j.out slurm.pert_draw
+#   mkdir -p setup/logs; sbatch --array=16-150%30 setup/slurm.pert_draw
+#   EXP_SH=<other experiment.sh> DRAW=<n> sbatch --output=setup/logs/slurm.pert_draw.%j.out setup/slurm.pert_draw
 #      (one draw; with a test experiment.sh that sources this one and sets its own PERTS_DIR, as the A3
 #       reproducibility test did, job 1194357)
 #SBATCH --job-name=pertdraw
@@ -20,7 +20,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=1
-#SBATCH --output=logs/slurm.pert_draw.%A_%a.out
+#SBATCH --output=setup/logs/slurm.pert_draw.%A_%a.out
 #SBATCH --exclusive
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da

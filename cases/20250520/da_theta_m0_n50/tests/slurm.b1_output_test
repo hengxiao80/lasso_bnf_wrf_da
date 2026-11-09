@@ -15,7 +15,7 @@
 #      which is bit-identical to that wrfrst in its 281 common variables (login node, 2026-11-07).
 # The first wrf.exe job under the Core/A100 module setup (env_wrf.sh since 2026-10-30): ldd check first.
 # new/ also serves as C1's 8-node point (timings from rsl.error.0000 at the end).
-#   sbatch slurm.b1_output_test
+#   sbatch tests/slurm.b1_output_test
 # Limit: two segments took 150-152 s each in the hcoll test (job 1054907, same segment of run 1, hcoll on; cmp of
 # wrfout + wrfrst 6-7 s); compare_nc.py on run 5's 01:15 wrfout vs wrfrst took 19 s on the login node. About
 # 6-8 min expected; 30 min allows for slower file reads.
@@ -26,7 +26,7 @@
 #SBATCH --nodes=8
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/slurm.b1_output_test.%j.out
+#SBATCH --output=tests/logs/slurm.b1_output_test.%j.out
 #SBATCH --exclusive
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da

@@ -42,6 +42,9 @@ done
 source "${exp_sh}"
 source "$(dirname "$(readlink -f "$0")")/cycle_lib.sh"
 
+# Every chained run is named: an empty RUN_NAME would put the run in run/ and output/ (and, where INIT_DIR is
+# run/ as in the 5-member experiment, among the initial members).
+[ -n "${RUN_NAME}" ] || die "RUN_NAME is empty: name the run (e.g. RUN_NAME=_d1)"
 run_preflight "${first}" "${last}" $((1 - dry))
 for v in MEMBER_MAX MEMBER_NODES WRF_TASK_TIME FILTER_JOB_TIME FILTER_NODES; do
    [ -n "${!v:-}" ] || die "${v} not set in ${exp_sh}"

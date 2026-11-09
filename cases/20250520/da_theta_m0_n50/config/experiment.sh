@@ -32,13 +32,13 @@ PERT_DATE=2025052000                         # fg = mean wrfinput at this time (
 
 # --- cycling (pilot step 12) -------------------------------------------------------------
 # Cycle times are YYYYMMDDHHMM. cycle(t) = [filter at t, if t > FIRST_CYCLE] + advance t -> t + 15 min
-# (notes/da_5member_pilot_steps.md Sec. 1). FIRST_CYCLE is the cold start from run/memNNN/wrfinput_d01.
+# (notes/da_5member_pilot_steps.md Sec. 1). FIRST_CYCLE is the cold start from INIT_DIR/memNNN/wrfinput_d01.
 NUM_ENS=50
 FIRST_CYCLE=202505200000
 CYCLE_MINUTES=15
 # RUN_NAME tells cycling runs of this experiment apart: run${RUN_NAME}/ and output${RUN_NAME}/.
 RUN_NAME=${RUN_NAME:-}
-INIT_DIR=${EXP_DIR}/run                      # memNNN/wrfinput_d01: initial members (A5), all runs
+INIT_DIR=${EXP_DIR}/init                     # memNNN/wrfinput_d01: initial members (A5), all runs (run/ until 2026-11-08)
 RUN_DIR=${EXP_DIR}/run${RUN_NAME}            # memNNN/ (latest wrfrst, DART-facing file), filter/
 OUTPUT_DIR=${EXP_DIR}/output${RUN_NAME}      # <t>/: status, filter/, memNNN/ (Q10 retention)
 # Observation sets: make_cycle_obs.sh writes ${OBS_DIR}/<t>/obs_seq.out, the cycles read it. obs/ is the
@@ -129,7 +129,8 @@ FILTER_JOB_TIME=00:30:00
 # DART's PH increment); 0 = DART's PH. Default 1 since 2026-10-03 (user, after step 13: it removes
 # most of the post-analysis shock and changes nothing else). The first pilot (output/, DART's PH)
 # can only be resumed with HYDROSTATIC_PH=0, which settings.txt enforces.
-# driver.sh records it in output${RUN_NAME}/settings.txt and refuses to resume a run with another value.
+# run_preflight (cycle_lib.sh; called by chain_submit.sh, and by driver.sh in the 5-member runs) records it in
+# output${RUN_NAME}/settings.txt and refuses to resume a run with another value.
 HYDROSTATIC_PH=${HYDROSTATIC_PH:-1}
 
 # Prior inflation damping per cycle (&filter_nml inf_damping, first column); prep_filter.sh writes it

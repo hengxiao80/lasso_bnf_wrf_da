@@ -12,7 +12,7 @@
 #   quiet      srun --quiet ...
 # Per variant: the count of warnings in srun's stderr (and its other messages); per step its CPU set, the
 # SLURM_CPUS_PER_TASK / OMP_NUM_THREADS it sees, and its start and end times (two at once, the third after).
-#   sbatch slurm.srun_cpus_test
+#   sbatch tests/slurm.srun_cpus_test
 #SBATCH -A cli120
 #SBATCH --partition=batch_all
 #SBATCH --job-name=sruncpu520
@@ -21,7 +21,7 @@
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=8
 #SBATCH --exclusive
-#SBATCH --output=logs/slurm.srun_cpus_test.%j.out
+#SBATCH --output=tests/logs/slurm.srun_cpus_test.%j.out
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
 source ${PROJECT_DIR}/scripts/env_wrf.sh

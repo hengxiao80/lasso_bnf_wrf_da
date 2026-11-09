@@ -2,7 +2,7 @@
 # C3 (notes/fulltest_steps.md C3): filter with 50 members, time and memory, on the job's nodes x FILTER_TASKS_PER_NODE
 # ranks (experiment.sh, default 32), without WRF. One layout per job; at most 80 nodes in use at a time (user,
 # 2026-11-07), so the 80-node job waits for the 40-node one:
-#   j=$(sbatch --parsable -N 40 slurm.filter50); sbatch -N 80 --dependency=afterany:${j} slurm.filter50
+#   j=$(sbatch --parsable -N 40 tests/slurm.filter50); sbatch -N 80 --dependency=afterany:${j} tests/slurm.filter50
 # Case: run 5 _conv_refl_f2's first analysis (05-20 00:15, one pass), with this experiment's input.nml.filter_joint
 # (ens_size 50, all 50 members' output files). Priors: run 5's five prior_d01.nc at 00:15, each used 10 times (member
 # i = run 5 member (i-1) % 5 + 1): 5 distinct states, but filter does the same work per observation and member as
@@ -29,7 +29,7 @@
 #SBATCH --nodes=40
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/slurm.filter50.%j.out
+#SBATCH --output=tests/logs/slurm.filter50.%j.out
 #SBATCH --exclusive
 
 source /gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da/cases/20250520/da_theta_m0_n50/config/experiment.sh

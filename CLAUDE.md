@@ -112,7 +112,11 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   and has its own `config/` otherwise, `perts/members/`, `perts/assignment.txt`, `run/`, `bdy/`, `run*/`,
   `output*/`. The full test's `config/` has only the one-pass filter files (`input.nml.filter_joint`). **`da_theta_m0_n5/` is the 5-member experiment, named `da_theta_m0` until 2026-11-06;
   `da_theta_m0` is now a link to it**, so paths in finished runs, notes and scripts still resolve.
-  `da_theta_m0_n50/` is the 50-member full test (`notes/fulltest_steps.md`). A new experiment links the common
+  `da_theta_m0_n50/` is the 50-member full test (`notes/fulltest_steps.md`); since 2026-11-08 its initial members
+  are in `init/` (not `run/`), the job scripts of the input-building steps and of tests in `setup/` and `tests/`
+  (logs in `setup/logs/`, `tests/logs/`; submit from the experiment directory), only the production job scripts
+  at its top, and every chained run is named (`chain_submit.sh` refuses an empty `RUN_NAME`; layout in
+  `notes/fulltest_steps.md` A1). A new experiment links the common
   inputs the same way.
 - `patches/`: local deviations from the pinned upstream code, with the reasons.
 - `notes/papers/` (not in git): PDFs of the papers the notes cite (DART, EnKF, HRRR/HRRRDAS).

@@ -34,6 +34,9 @@ cases/**/*
 !cases/*/da_*/config/*
 !cases/*/da_*/slurm.*
 cases/*/da_*/slurm.*.out
+# job scripts of the input-building steps and of the tests (da_theta_m0_n50 on: setup/, tests/; logs in */logs/)
+!cases/*/da_*/setup/slurm.*
+!cases/*/da_*/tests/slurm.*
 # I/O and decomposition test variants
 !cases/*/iotest/submit_chain*.sh
 !cases/*/iotest/*/namelist.input

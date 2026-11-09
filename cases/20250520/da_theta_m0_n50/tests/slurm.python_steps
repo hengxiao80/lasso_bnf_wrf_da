@@ -21,8 +21,8 @@
 # skipped if k x level 1's largest step memory > 200 GB (nodes have 256 GB), and the remaining levels are skipped
 # once a level's update phase takes more than 3 x level 1's. Each level's large files are deleted after its
 # summary; times and samples stay in tests/python_steps/<job>/k<k>/.
-#   sbatch slurm.python_steps
-#   LEVELS="1 2 10" sbatch slurm.python_steps
+#   sbatch tests/slurm.python_steps
+#   LEVELS="1 2 10" sbatch tests/slurm.python_steps
 # Limit: in run 5 (one member per node) the prior steps took ~85 s and the update steps 97-147 s per member; a cp of
 # a 13.3-GB wrfrst took ~4 s (hcoll test, job 1054907). Without any slowdown the five levels take ~5 min each plus
 # the copies (43 wrfrst copies, 572 GB) ~25-30 min; 1.5 h allows level 25 to run ~7 x slower than level 1, more
@@ -34,12 +34,12 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=128
-#SBATCH --output=logs/slurm.python_steps.%j.out
+#SBATCH --output=tests/logs/slurm.python_steps.%j.out
 #SBATCH --exclusive
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
 EXP_SH=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/config/experiment.sh
-SELF=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/slurm.python_steps
+SELF=${PROJECT_DIR}/cases/20250520/da_theta_m0_n50/tests/slurm.python_steps
 source ${EXP_SH}
 source ${PROJECT_DIR}/scripts/da/cycle_lib.sh     # log, DART_EXTRA
 source ${PROJECT_DIR}/scripts/env_wrf.sh > /dev/null 2>&1   # netCDF libraries for update_wrf_bc

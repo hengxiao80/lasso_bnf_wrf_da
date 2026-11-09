@@ -5,7 +5,7 @@
 # pilot's da_theta_m0_n5/slurm.make_mean_icbc (which made all 73 hours, 2026-09-29).
 # A4 of notes/fulltest_steps.md (2026-11-06): 05-20 00Z only (hour 24), again, with REFL_10CM in wrfinput
 # (namelist.input.real names iofields_real.txt), after the old file was moved to *.pre_refl:
-#   FIRST_HOUR=24 LAST_HOUR=24 sbatch slurm.make_mean_icbc
+#   FIRST_HOUR=24 LAST_HOUR=24 sbatch setup/slurm.make_mean_icbc
 # Layout as in theta_m0 real.exe (16 ranks x 8 OpenMP threads per node), on 4 nodes.
 #SBATCH --job-name=mean520
 #SBATCH -A cli120
@@ -14,7 +14,7 @@
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/slurm.make_mean_icbc.%j.out
+#SBATCH --output=setup/logs/slurm.make_mean_icbc.%j.out
 #SBATCH --exclusive
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da

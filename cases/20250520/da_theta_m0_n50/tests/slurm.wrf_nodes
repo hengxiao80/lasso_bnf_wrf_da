@@ -14,8 +14,8 @@
 # On 2 nodes only, first the compute-node sbatch test (fulltest_steps.md B2): from its batch node, the job submits a
 # 1-node, 1-minute job (sbtest520, --dependency=afterany on this job, as a cycle chain would) that prints its
 # host; the submission's result goes to this log, the test job's output to tests/wrf_nodes/<job>_N2/.
-#   sbatch -N 2 slurm.wrf_nodes
-#   sbatch -N 4 slurm.wrf_nodes
+#   sbatch -N 2 tests/slurm.wrf_nodes
+#   sbatch -N 4 tests/slurm.wrf_nodes
 # Limit: on 8 nodes a segment took 128-138 s (B1 test), of which ~50 s start-up and writes (the same at any node
 # count) and 69-78 s integration. If the integration time scaled with 1/nodes, a 2-node segment would take
 # ~50 + 4 x 78 = 362 s, two of them ~12 min, and 4 nodes ~7 min; how it scales below 8 nodes is not measured.
@@ -27,7 +27,7 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=16
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/slurm.wrf_nodes.%j.out
+#SBATCH --output=tests/logs/slurm.wrf_nodes.%j.out
 #SBATCH --exclusive
 
 PROJECT_DIR=/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/bnf_wrf_da
