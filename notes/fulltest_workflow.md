@@ -177,7 +177,7 @@ In `config/experiment.sh` (resources are not recorded in `settings.txt`; the ana
 - **A(t)**: `advance_member.sh` → `run_wrf_segment.sh` (on a hang: `hang_snapshot.py`, `hang_summary.py`).
 - **F(t)**: `filter_step.sh` → `prep_filter.sh` (`wrfrst_dart.py extract`; `fill_inflation_restart` at the first analysis), `run_filter`, `post_filter.sh save` and `members` (`wrfrst_dart.py qnrain`, `insert`, `extract`; `refit_member_bdy.sh` → `subset_bdy.py`, `update_wrf_bc`); `check_cycle.py` (with `check_filter_gate.py` and `restart_increment_test.py`).
 - **Inputs, done once** (job scripts in `setup/`): `make_mean_icbc.sh`; `run_wrfda_draw.sh`, `wrfda_bank_diff.py`, `check_wrfda_draw.py`, `check_bank.py`; `assign_perturbations.py`, `make_initial_members.py` (`--init-subdir init`), `check_hydrostatic_balance.py`; `build_member_bdy.py`, `check_member_bdy.py`.
-- **Observations, before a run** (shared sets in `da_common_theta_m0/obs*/`): `make_cycle_obs.sh`, `convert_madis_hour.sh`, `make_cycle_mesonet.sh`, `select_mesonet_cycle.py`, `download_mrms.sh`, `mrms_to_obs_seq.py`.
+- **Observations, before a run** (shared sets in `da_common_theta_m0/obs*/`): `make_cycle_obs.sh`, `convert_madis_hour.sh`, `make_cycle_mesonet.sh`, `select_mesonet_cycle.py`, `download_mrms.sh`, `mrms_to_obs_seq.py`; `check_cycle_obs.py` checks a set's times (A7).
 - **5-member only**: `driver.sh`, `cycle_job.sh` (with `slurm.cycle`).
 
 ### 5.4 Inputs (measured 2026-11-08; GB = 10⁹ bytes)
