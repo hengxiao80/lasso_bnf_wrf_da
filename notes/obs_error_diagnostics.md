@@ -1,6 +1,8 @@
 # Observation-error diagnostics from `obs_seq.final`: the implied error and Desroziers' estimate
 
-Written 2026-10-12 (math set in LaTeX for Typora on 2026-11-12, content unchanged). Explains the two estimates `scripts/da/innovation_stats.py` reports, used in `obs_expansion.md` §5 to compare our assigned errors with what the pilot's innovations support. References: Desroziers, Berre, Chapnik and Poli (2005, *QJRMS* 131, 3385–3396); for the innovation-variance identity, any DA text (e.g. Daley 1991).
+Written 2026-10-12 (math set in LaTeX for Typora on 2026-11-12; on 2026-11-13 the bias term added to Sec. 3 and a D1 example to Sec. 4.3). Explains the two estimates `scripts/da/innovation_stats.py` reports, used in `obs_expansion.md` §5 to compare our assigned errors with what the pilot's innovations support. References: Desroziers, Berre, Chapnik and Poli (2005, *QJRMS* 131, 3385–3396); for the innovation-variance identity, any DA text (e.g. Daley 1991).
+
+**"The pilot" in this note** is the step-13 1-hour pilot (`output_hph`, 2026-10-02/03, `da_5member_pilot_steps.md`), the 5-member run whose statistics led to the METAR error change of 2026-10-03 (`obs_expansion.md` Sec. 5). It still had DART's default MADIS errors (METAR T2 2.5 K, 10-m wind 3.5 m/s, RH 0.2). Later runs, D1 included, have the NCEP values (METAR T2 1.26 K, 10-m wind 1.59 m/s, RH 0.059; `patches/README.md`). Sec. 4.3 gives an example with each.
 
 **Typora.** Display equations are `$$` blocks. Inline math (`$...$`) needs *Preferences → Markdown → Inline Math*.
 
@@ -38,7 +40,7 @@ $$
 $$
 
 Assume:
-- **(A1) Unbiased errors.** $\operatorname{mean}(\varepsilon_o) = \operatorname{mean}(\varepsilon_b) = 0$. Otherwise the squared biases also enter $\operatorname{mean}(d_b^2)$.
+- **(A1) Unbiased errors.** $\operatorname{mean}(\varepsilon_o) = \operatorname{mean}(\varepsilon_b) = 0$. Otherwise the squared mean of $d_b$ also enters $\operatorname{mean}(d_b^2)$ (Sec. 3, Eq. 2a).
 - **(A2) Observation and prior errors uncorrelated.** $\operatorname{mean}(\varepsilon_o \varepsilon_b) = 0$. Reasonable: the prior was not made from this observation. It fails if the same observation was already assimilated (e.g. a report used twice), or if both errors share a cause (e.g. a station whose siting matches a model terrain error).
 
 Then
@@ -69,7 +71,28 @@ Two related numbers in the same table:
 - the **consistency ratio** $\operatorname{mean}(d_b^2) / \operatorname{mean}(s_b^2 + \sigma_o^2)$: 1 if the assigned errors and the spread together account for the innovations, < 1 if they allow more variance than is seen (errors or spread too large), > 1 if less;
 - the **rms innovation** $\sqrt{\operatorname{mean}(d_b^2)}$ and the **bias** $\operatorname{mean}(d_b)$, to check (A1).
 
-**How (A3) fails, and in which direction.** With few members the ensemble is usually underdispersive: $\sigma_b > s_b$. Then (2) assigns to the observation error what really belongs to the prior error, so $\sigma_{o,\mathrm{implied}} > \sigma_{o,\mathrm{true}}$. **The implied error is an upper bound when the spread is too small.** A prior bias also inflates $\operatorname{mean}(d_b^2)$ and therefore $\sigma_{o,\mathrm{implied}}$.
+**What the implied error contains.** Drop (A1) and keep (A2). With the mean errors $\mu_o = \operatorname{mean}(\varepsilon_o)$ and $\mu_b = \operatorname{mean}(\varepsilon_b)$, the innovations have the mean $\mu = \operatorname{mean}(d_b) = \mu_o - \mu_b$. A mean square is the variance plus the squared mean, so (1) becomes
+
+$$
+\operatorname{mean}(d_b^2) = \sigma_b^2 + \sigma_{o,\mathrm{true}}^2 + \mu^2
+\tag{2a}
+$$
+
+with $\sigma_b^2$ and $\sigma_{o,\mathrm{true}}^2$ now the variances of the two errors about their means. Put this into (2):
+
+$$
+\sigma_{o,\mathrm{implied}}^2 = \sigma_{o,\mathrm{true}}^2 + \big(\sigma_b^2 - \operatorname{mean}(s_b^2)\big) + \mu^2
+\tag{2b}
+$$
+
+So the implied error is the true observation error plus two terms: the part of the prior error variance that the spread misses, and the squared bias. It measures everything in the innovations that the spread doesn't explain.
+
+- **How (A3) fails, and in which direction.** With few members the ensemble is usually underdispersive: $\sigma_b > s_b$. Then the second term of (2b) is positive: (2) assigns to the observation error what really belongs to the prior error, so $\sigma_{o,\mathrm{implied}} > \sigma_{o,\mathrm{true}}$. **The implied error is an upper bound when the spread is too small.** If the spread were too large, the term would be negative and the implied error too small.
+  - An illustration with an assumed prior error: METAR T2 in D1 (pooled over 00:15–01:00, `fulltest_d1_analysis.md`) has $\operatorname{mean}(d_b^2)$ = 1.14 K² and $\operatorname{mean}(s_b^2)$ = 0.24 K², so $\sigma_{o,\mathrm{implied}}$ = 0.95 K. If the true prior error were 0.7 K ($\sigma_b^2$ = 0.49 K²; an assumed value, not an estimate), the true observation error would be 0.81 K.
+- **A bias** ($\mu \ne 0$) adds $\mu^2$. The spread doesn't show a bias, because every member shares the forecast's bias, and $\sigma_o$ describes a random error with mean zero; so the bias goes into the implied error as well.
+  - (2b) can't tell which side is biased: the model, the observations or the forward operator. A bias calls for a bias correction or a look at the observations, not for a larger $\sigma_o$.
+  - `innovation_stats.py` prints $\mu$ as "bias", so the implied error without it is $\sqrt{\operatorname{mean}(d_b^2) - \mu^2 - \operatorname{mean}(s_b^2)}$ (not computed by the script).
+  - Example from D1 (pooled, QC 0 and 7): mesonet V has $\mu$ = −1.02 m/s against an rms innovation of 2.11 m/s, so $\mu^2$ is 23 % of $\operatorname{mean}(d_b^2)$; $\sigma_{o,\mathrm{implied}}$ = 2.00 m/s, and 1.73 m/s without $\mu^2$. METAR T2 has $\mu$ = −0.01 K, and the term is nil.
 
 ## 4. Desroziers' estimate
 
@@ -147,7 +170,7 @@ In our filter the analysis is a serial EAKF with localization, sampling-error co
 
 ### 4.3 When the assumed errors are wrong: bias toward the assigned value, and iteration
 
-If $\sigma_{o,\mathrm{used}}$ differs from the truth, (3) still holds but (4) doesn't. Desroziers' estimate is then pulled toward what was assigned. Example, METAR T2 in the 1-hour pilot (`output_hph`): $s_b$ = 0.62 K, $\sigma_{o,\mathrm{used}}$ = 2.7 K, rms $d_b$ = 1.20 K.
+If $\sigma_{o,\mathrm{used}}$ differs from the truth, (3) still holds but (4) doesn't. Desroziers' estimate is then pulled toward what was assigned. Example, METAR T2 in the pilot, with DART's default error (2.5 K; 2.7 K rms with the boundary inflation): $s_b$ = 0.62 K, $\sigma_{o,\mathrm{used}}$ = 2.7 K, rms $d_b$ = 1.20 K.
 
 $$
 \begin{aligned}
@@ -171,10 +194,23 @@ $$
 
 The iteration converges quickly when the first guess is not wildly off. In practice one or two passes.
 
+**The same with today's errors.** In D1 (50 members, pooled over 00:15–01:00; `fulltest_d1_analysis.md`), METAR T2 has the NCEP error 1.26 K (1.36 K rms with the boundary inflation), $s_b$ = 0.49 K and rms $d_b$ = 1.07 K, so $\operatorname{mean}(d_b^2)$ = 1.145 K² and $s_b^2$ = 0.241 K²:
+
+$$
+\begin{aligned}
+\text{factor} &= \frac{1.36^2}{0.49^2 + 1.36^2} = 0.885 \\
+\sigma_{o,D} &= \sqrt{0.885 \times 1.145} = 1.01\ \text{K}
+\end{aligned}
+\notag
+$$
+
+- A second pass gives 0.96 K, and the fixed point is $\sqrt{1.145 - 0.241}$ = 0.95 K, D1's implied error. With an assigned error this close to the fixed point, one pass lands within 6 % of it, against 14 % in the pilot (1.17 against 1.03 K).
+- The script gives 0.94 K for D1, slightly below both the scalar one-pass value and the implied error. The scalar picture doesn't allow that; as for ACARS T in Sec. 5, nearby observations make the effective gain larger than $k$ (`fulltest_d1_analysis.md` Sec. 3.5).
+
 ## 5. How the two estimates relate
 
 - **Same information, different route.** Both split $\operatorname{mean}(d_b^2)$ between prior and observation error using the ensemble's spread: the implied error explicitly (A3); Desroziers through the gain, which DART computes from the same inflated spread. In the scalar case, **converged Desroziers equals the implied error.** They are not independent checks of each other.
-- **One-pass Desroziers vs implied.** One pass lies between the assigned error and the implied one (exactly so in the scalar case), so starting from errors that are too large gives a one-pass estimate that is somewhat too large. Pilot METAR ratios to the assigned error: implied 0.29–0.48, one-pass Desroziers 0.32–0.47.
+- **One-pass Desroziers vs implied.** One pass lies between the assigned error and the implied one (exactly so in the scalar case), so starting from errors that are too large gives a one-pass estimate that is somewhat too large. Pilot METAR ratios to the assigned error (DART's defaults): implied 0.29–0.48, one-pass Desroziers 0.32–0.47. In D1, with the NCEP errors: implied 0.70–0.97, Desroziers 0.69–0.82 (T2, q2, 10-m wind; `fulltest_d1_analysis.md` Sec. 3.4).
 - **Both inherit the spread's errors.** If the 5-member spread underestimates the true prior error, both overestimate the observation error. For METAR in the pilot the true errors are therefore probably at or below the estimates (~1 K, ~6 % RH, ~1.5 m/s).
 - **What breaks the scalar picture in the EAKF.** Localization, nearby observations of other types updating the same prior, inflation, and sampling error all change the effective gain, so the two estimates differ somewhat in practice. Example from the pilot: ACARS T has implied 0.84 but one-pass Desroziers 0.69, below the implied value, which the scalar picture doesn't allow (there, one pass lies between the implied and the assigned error). Likely cause: thousands of nearby aircraft reports, each pulling the analysis toward the others, so the effective gain for any one report is larger than $k$. The companion identity $E[(Hx_a - Hx_b) \, d_b] \approx B$ (Sec. 4.2) is the most useful independent check, because it tests the spread directly.
 
@@ -183,7 +219,7 @@ The iteration converges quickly when the first guess is not wildly off. In pract
 For each assumption: what happens if it fails, and how it stands in our data.
 
 - **(A1) Unbiased errors.**
-  - If it fails: biases add to $\operatorname{mean}(d_b^2)$; both estimates go up.
+  - If it fails: biases add to $\operatorname{mean}(d_b^2)$; both estimates go up (the implied error by Eq. 2b).
   - In our data: `innovation_stats.py` prints $\operatorname{mean}(d_b)$; small in the pilot (T2 −0.01 K, V10 −0.5 m/s).
 - **(A2) Observation and prior errors uncorrelated.**
   - If it fails: cross term ignored.
@@ -203,7 +239,7 @@ For each assumption: what happens if it fails, and how it stands in our data.
 
 ## 7. In `scripts/da/innovation_stats.py`
 
-- Implied: `sqrt(max(mean(d**2) - mean(spread**2), 0))`, over obs with DART QC 0 or 7; ratio to `sqrt(mean(err_var))`.
+- Implied: `sqrt(max(mean(d**2) - mean(spread**2), 0))`, over obs with DART QC 0 or 7; ratio to `sqrt(mean(err_var))`. It includes the bias (Eq. 2b).
 - Consistency ratio: `mean(d**2) / mean(spread**2 + err_var)`, same selection.
 - Desroziers: `sqrt(mean((y - post_mean) * (y - prior_mean)))`, over QC 0; ratio to `sqrt(mean(err_var))` of those obs.
 - Ratios are to the rms assigned error **including** boundary inflation, so they convert to the base (unboosted) error approximately as ratio × base error.
