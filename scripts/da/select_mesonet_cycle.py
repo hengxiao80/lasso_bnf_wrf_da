@@ -380,8 +380,15 @@ def main():
     say(f'  |obs time - t| of selected records: median {np.median(off):.0f} s, max {off.max():.0f} s')
 
     # --- outputs -----------------------------------------------------------------------------
-    out = {v: r[v][sel].astype(np.float32 if v != 'observationTime' else np.float64)
-           for v in ['latitude', 'longitude', 'elevation', 'observationTime']}
+    # observationTime as int32 seconds since 1970 (exact; fits until 2038): convert_madis_mesonet reads an
+    # integer time with getvar_int, but a floating one into real(r8), i.e. float32 under r8 = r4, which rounds
+    # the epoch seconds to multiples of 128 s (up to 64 s off) and put records selected inside the window
+    # outside it; filter then stopped at D2's 02:00 cycle (2026-11-13, notes/fulltest_steps.md D2).
+    out = {v: r[v][sel].astype(np.float32) for v in ['latitude', 'longitude', 'elevation']}
+    tsel = np.rint(r['observationTime'][sel])
+    if tsel.size and not (0 < tsel.min() and tsel.max() < 2**31):
+        sys.exit('select_mesonet_cycle.py: observationTime outside the int32 range')
+    out['observationTime'] = tsel.astype(np.int32)
     masks = {'temperature': use_t, 'dewpoint': use_q, 'altimeter': alt_out,
              'windDir': use_w, 'windSpeed': use_w}
     for v in VALUES:
@@ -389,8 +396,11 @@ def main():
     with nc.Dataset(os.path.join(args.out_dir, 'mesonet_input.nc'), 'w', format='NETCDF3_64BIT_OFFSET') as f:
         f.createDimension('recNum', None)
         for v, x in out.items():
-            var = f.createVariable(v, x.dtype, ('recNum',), fill_value=attrs[v]['_FillValue'])
-            var.missing_value = np.array(MISSING, dtype=x.dtype)
+            if v == 'observationTime':     # never missing in the selection; no float fill value for an int
+                var = f.createVariable(v, 'i4', ('recNum',))
+            else:
+                var = f.createVariable(v, x.dtype, ('recNum',), fill_value=attrs[v]['_FillValue'])
+                var.missing_value = np.array(MISSING, dtype=x.dtype)
             var[:] = x
         for q in QCRS:
             var = f.createVariable(q, 'i4', ('recNum',))

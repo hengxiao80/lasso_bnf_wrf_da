@@ -175,6 +175,12 @@ configuration is still `use_theta_m = 1`; do not treat `theta_m0` as the final c
   that way, 7.6 s after the fix (2026-11-08, `notes/fulltest_steps.md` C2). Keep fill mode on, so padding bytes
   are deterministic. `build_member_bdy.py` (`write_state`) still has the old pattern. netCDF-4 files don't have
   this problem.
+- **DART is built with `r8 = r4`, so a time read as `real(r8)` is float32**: epoch seconds near 1.75e9 round to
+  multiples of 128 s (up to 64 s off). The MADIS converters read `observationTime` that way unless it is an
+  integer variable, so `select_mesonet_cycle.py` writes it as int32. Before that fix, mesonet obs selected inside
+  the window landed up to 34 s outside it, and **filter stops at an obs after its window** ("advancing the model
+  inside filter ... not currently supported"): D2 stopped at 02:00 (2026-11-13, `notes/fulltest_steps.md` A7, D2).
+  `check_cycle_obs.py` checks every set's first and last obs time against the window.
 - The user's shell aliases `ls` with `-F`, so `ls` output has `@`/`*` suffixes. Use `find` or
   `command ls` in scripts. This once created dozens of broken symlinks.
 - Claude Code replays a shell snapshot taken at session start, so `~/.bashrc` edits do not apply

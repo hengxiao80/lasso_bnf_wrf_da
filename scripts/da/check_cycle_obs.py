@@ -4,14 +4,16 @@ Usage: .venv/bin/python scripts/da/check_cycle_obs.py <obs set dir> <first YYYYM
            [--rawin-dir DIR] [--loop-log LOG]
 
 For sets made by make_cycle_obs.sh with MESONET and MRMS set (e.g. da_common_theta_m0/obs_meso_a_calmkeep_mrms/;
-written for A7, notes/fulltest_steps.md). Per time t: every file present; the MRMS valid time in
-(t - 450 s, t + 450 s]; the time slices' bounds equal to that window; the totals equal in counts.*, the
+written for A7, notes/fulltest_steps.md). Per time t: every file present; every obs time in obs_seq.out and
+obs_seq.joint inside the window (t - 450 s, t + 450 s] (the first and last obs time obs_sequence_tool printed in
+counts.log and joint.log; filter stops at an obs after the window, D2's 02:00 cycle, 2026-11-13); the MRMS valid
+time in the window; the time slices' bounds equal to it; the totals equal in counts.*, the
 preprocessor's and the MRMS converter's logs, joint.log (type by type) and the three files' num_obs; radiosonde
 status as expected from the obs time stamps in the hourly radiosonde files (--rawin-dir, default
 <case>/obs/obs_seq_madis/rawin, two levels above the set); no error-like log line beyond the known ones (boundary
 error inflation, the slices' bounds, the radiosonde slice's "all obs excluded" where expected). With --loop-log
-(a log of cases/20250520/obs/logs/a7_loop.sh): its three lines for t (33 MRMS levels, the MRMS and window/screened
-totals). Then a table of counts per family per time, per-type ranges, and the problems found.
+(a log of make_obs_loop.sh, or of A7's a7_loop.sh, which wrote the same lines): its three lines for t (33 MRMS
+levels, the MRMS and window/screened totals). Then a table of counts per family per time, per-type ranges, and the problems found.
 """
 import argparse
 import glob
@@ -109,14 +111,14 @@ for line in open(loop_log) if loop_log else []:
     if m:
         cur = m.group(1)
         continue
-    if line.startswith("A7 LOOP"):
+    if re.match(r"(A7 )?LOOP (DONE|FAILED)", line):
         print("loop log:", line.rstrip())
         cur = None
     elif cur:
         loop[cur].append(line.rstrip())
 
 t, t_end = datetime.strptime(first, FMT), datetime.strptime(last, FMT)
-rows, ranges, problems = [], defaultdict(list), []
+rows, ranges, problems, span = [], defaultdict(list), [], defaultdict(list)
 while t <= t_end:
     s = t.strftime(FMT)
     d = os.path.join(obs_dir, s)
@@ -158,6 +160,20 @@ while t <= t_end:
         h = header_num_obs(os.path.join(d, f))
         if h != n:
             bad.append(f"{f} header num_obs {h} != {n}")
+
+    # Every obs time inside the window: first and last obs time of obs_seq.out and obs_seq.joint.
+    for f, log in (("obs_seq.out", "counts.log"), ("obs_seq.joint", "joint.log")):
+        m = re.search(r"Processing sequence file \S*%s\s.*?First obs time: day=\s*(\d+),\s*sec=\s*(\d+)"
+                      r".*?Last obs time: day=\s*(\d+),\s*sec=\s*(\d+)" % re.escape(f),
+                      open(os.path.join(d, log)).read(), re.S)
+        if not m:
+            bad.append(f"{log}: no first/last obs time of {f}")
+            continue
+        o1 = (dart_time(*m.groups()[:2]) - t).total_seconds()
+        o2 = (dart_time(*m.groups()[2:]) - t).total_seconds()
+        span[f].append((o1, o2))
+        if not (-HALF.total_seconds() < o1 <= o2 <= HALF.total_seconds()):
+            bad.append(f"{f}: obs times {o1:+.0f} to {o2:+.0f} s from t, outside the window")
 
     # Slice bounds = the window (t - 450 s, t + 450 s].
     for fam in ("metar", "acars", "marine", "rawin"):
@@ -231,6 +247,8 @@ for c, i in (("window", 2), ("screened", 3), ("refl", 9), ("clear", 10), ("joint
     print(f"{c}: {min(v)}-{max(v)}")
 offs = sorted({int(r[1]) for r in rows})
 print("MRMS offsets (s):", offs)
+for f, v in span.items():
+    print(f"{f}: obs times from {min(o for o, _ in v):+.0f} to {max(o for _, o in v):+.0f} s around t")
 print("\nPROBLEMS:" if problems else "\nno problems found")
 for p in problems:
     print("  " + p)
