@@ -84,11 +84,11 @@ Further:
 - **Left out**: the mesonet altimeter, which is evaluated only (QC 1), so its rows would cover only its rejected outliers.
 - **Against `check_cycle.log`**: its `obs_report` (the numbers in `fulltest_steps.md` D1) uses each run's own QC 0 and 1 for both the prior and the posterior statistics, so its numbers differ somewhat from these; its reflectivity rms $d_b$ (~11 dBZ) is smaller than over QC 0 or 7 here.
 
-How they were computed:
+How they were computed: with scripts in the session's scratchpad, which became the two below on 2026-11-13; these reproduce every number of Sec. 3.2–3.6 (checked).
 
-- Over QC 0 or 7, pooled (Sec. 3.4): `scripts/da/innovation_stats.py`. D1's output directory also holds D2's cycles (01:15 on), so the script was given a directory of links to D1's four `obs_seq.final` files. Per file: 3.6 s, 1.2 GB peak memory (login node).
-- Over QC 0 or 7, per analysis time (Sec. 3.3): the same statistics from a short script (session scratchpad, not kept) that uses `check_filter_gate.read_obs_seq`.
-- Over the observations assimilated in both runs (Sec. 3.2, Desroziers' estimate in Sec. 3.4): a second short script (session scratchpad, not kept). `innovation_stats.py` takes each run's own QC-0 set for Desroziers' estimate, so its values differ from these.
+- `scripts/da/obs_space_stats.py RUN_A [RUN_B] --first <t> --last <t>`: the statistics of Sec. 3.2–3.5, per analysis time and pooled, for one run or two side by side; with two runs the analysis statistics are over the observations assimilated in both, with one run over its own QC-0 set; `--csv` for plotting. D1 against run 5, four cycles: 19 s, 1.4 GB peak (login node).
+- `scripts/da/refl_innovation_split.py RUN --first <t> --last <t>`: the split of Sec. 3.6, per analysis time and pooled. D1, four cycles: 14 s, 1.3 GB peak.
+- `scripts/da/innovation_stats.py` (one run, pooled over every cycle it finds, so D1's four `obs_seq.final` were given as a directory of links) gives the same prior statistics; its Desroziers estimate is over the run's own QC-0 set, so it differs from the common-set values of Sec. 3.4. Per file: 3.6 s, 1.2 GB peak.
 
 ### 3.2 00:15: the same forecasts, different analyses
 

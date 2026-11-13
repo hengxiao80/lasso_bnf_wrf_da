@@ -179,6 +179,7 @@ In `config/experiment.sh` (resources are not recorded in `settings.txt`; the ana
 - **Inputs, done once** (job scripts in `setup/`): `make_mean_icbc.sh`; `run_wrfda_draw.sh`, `wrfda_bank_diff.py`, `check_wrfda_draw.py`, `check_bank.py`; `assign_perturbations.py`, `make_initial_members.py` (`--init-subdir init`), `check_hydrostatic_balance.py`; `build_member_bdy.py`, `check_member_bdy.py`.
 - **Observations, before a run** (shared sets in `da_common_theta_m0/obs*/`): `make_cycle_obs.sh`, `convert_madis_hour.sh`, `make_cycle_mesonet.sh`, `select_mesonet_cycle.py`, `download_mrms.sh`, `mrms_to_obs_seq.py`; `make_obs_loop.sh` runs `download_mrms.sh` and `make_cycle_obs.sh` over a range of times (detached, login node), `check_cycle_obs.py` checks a set's times (A7).
 - **5-member only**: `driver.sh`, `cycle_job.sh` (with `slurm.cycle`).
+- **Diagnostics after a run** (read `obs_seq.final`; not part of the chain): `innovation_stats.py` (pooled), `obs_space_stats.py` (per cycle and pooled, one run or two; since 2026-11-13), `refl_innovation_split.py` (since 2026-11-13); definitions in `fulltest_d1_analysis.md` Sec. 3.1.
 
 ### 5.4 Inputs (measured 2026-11-08; GB = 10⁹ bytes)
 
