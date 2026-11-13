@@ -9,7 +9,7 @@ Written 2026-11-12 in session "fulltest: D1 analysis". Compares D1, the first ga
 - **The filter namelists differ only in `ens_size`** (and the number of members written). Both runs use the sampling-error correction, which multiplies each observation-to-state regression by a factor $S(\hat r, N)$: at a sample correlation $\hat r$ = 0.5, $S$ = 0.12 for 5 members and 0.89 for 50; at 0.9, 0.49 and 0.98 (`dart_sampling_error_correction.md` Sec. 7). That note's Sec. 8 expected the 5-member results not to carry over to 50 members for this reason alone. D1 shows the effect (Sec. 2, 3.2).
 - **At 00:15 the forecasts are the same and the analyses are not** (Sec. 3.2). Both priors are 15-min forecasts from the cold start; their rms innovation (rms $d_b$, observation minus prior mean; Sec. 3.1) agrees within 2 % for every type. On the observations both runs assimilated, D1's analysis fits closer for 14 of 15 types (rms analysis residual $d_a$ 2–18 % smaller), also where its spread is smaller (METAR T2, ACARS T). That difference comes from the analysis step, not from the spread.
 - **From 00:30 on the forecasts diverge** (Sec. 3.3): D1's are better for the surface types and reflectivity (at 01:00 mesonet q −17 %, reflectivity −10 %, METAR T2 −9 % in rms $d_b$), worse for clear-air reflectivity (+7 % at 00:45, +15 % at 01:00).
-- **The error diagnosis keeps its direction** (Sec. 3.5): the conventional errors we assign are generous (mesonet T and wind most), the reflectivity error is too small and the clear-air error too large, in both runs. The implied errors are 2–11 % smaller in D1, because its forecasts fit better. Desroziers' estimates are smaller by more for several types (reflectivity −17 %, METAR altimeter −11 %, METAR U10 −9 %, ACARS T −7 %): they depend on the gain as well as on the observations, and a realized gain below the optimal one raises them (Eq. 2).
+- **The error diagnosis keeps its direction** (Sec. 3.5): the conventional errors we assign are generous (mesonet T and wind most) and the clear-air error too large, in both runs. For precipitation reflectivity these statistics can't tell: its implied error, 3.1 times the assigned one, is mostly prior error the ensemble doesn't represent (missed and misplaced storms) and a bias built in by the observation selection, and its Desroziers estimate is exact only at the optimal gain, which is unknown for reflectivity: the realized gain (0.58) is more than twice the value that would be optimal if the spread were right (0.25), but the spread is far too small, so the true optimum could lie anywhere from 0.25 to 1 (Sec. 3.6). The implied errors are 2–11 % smaller in D1, because its forecasts fit better. Desroziers' estimates are smaller by more for several types (reflectivity −17 %, METAR altimeter −11 %, METAR U10 −9 %, ACARS T −7 %): they depend on the gain as well as on the observations, and a realized gain below the optimal one raises them (Eq. 2).
 - **Not known yet**: how much of D1's larger increments is the correction and how much the less noisy covariances; why D1's adaptive inflation is smaller; where the clear-air misfit grows. Next steps in Sec. 5.
 
 ## 1. What differs between the runs
@@ -78,6 +78,7 @@ $\operatorname{mean}$ averages over a set of observations of one type (below): a
 
 Further:
 
+- **Gains.** The *isolated-observation gain* $k = s_b^2/(s_b^2 + \sigma_o^2)$ is the fraction of its innovation an observation's EAKF update removes when it is the only observation assimilated (`obs_error_diagnostics.md` Sec. 4.1). It is computed for each observation from its own spread and assigned error and averaged over the set; "isolated" means one observation, not one type. The *realized gain* $g$ (Sec. 3.5) is the fraction the whole analysis removed at the observation's site, with all observations of all types assimilated. For an isolated observation, $g = k$.
 - **Ratios** (Sec. 3.4): the implied error and Desroziers' estimate divided by the rms assigned error $\sqrt{\operatorname{mean}(\sigma_o^2)}$ over the same set. Below 1: the innovations support a smaller error than the one assigned.
 - **Units**: specific humidity in g/kg; the others as in each row (K, m/s, hPa, dBZ).
 - **Left out**: the mesonet altimeter, which is evaluated only (QC 1), so its rows would cover only its rejected outliers.
@@ -134,13 +135,13 @@ Over the same observations: the rms prior spread and Desroziers' estimate $\sigm
 - The ensemble means of the two 00:15 forecasts are close: the same mean state, 15 min of integration, and rms $d_b$ within 2 % for every type (within 1 % for all but mesonet q).
 - D1's analysis fits closer for 14 of 15 types, by 2–18 % in rms $d_a$ (METAR altimeter −18 %, ACARS T and mesonet q −10 %, reflectivity and METAR V10 −8 %, METAR T2 −7 %); METAR q2 (+3 %) is the exception.
 - Desroziers' estimate is lower in D1 for every type, by 1–13 % (Sec. 3.5).
-- **The spread doesn't explain it.** For METAR T2, ACARS T, mesonet T and V and clear air, D1's spread is smaller than run 5's, yet its analysis fits closer: from the same rms $d_b$, D1 removed more of the innovation, although the spread, which sets the single-observation gain $k$ of `obs_error_diagnostics.md` Sec. 4.1, was smaller. That points to the analysis step: the correction of Sec. 2 and the sampling noise in the covariances. For the METAR altimeter (spread 0.78 against 0.64 hPa, from the larger MU perturbations) and the moisture types, the larger spread may add to it.
+- **The spread doesn't explain it.** For METAR T2, ACARS T, mesonet T and V and clear air, D1's spread is smaller than run 5's, yet its analysis fits closer: from the same rms $d_b$, D1 removed more of the innovation, although the spread, which sets the isolated-observation gain $k$ (Sec. 3.1), was smaller. That points to the analysis step: the correction of Sec. 2 and the sampling noise in the covariances. For the METAR altimeter (spread 0.78 against 0.64 hPa, from the larger MU perturbations) and the moisture types, the larger spread may add to it.
 
 **Worked example: the METAR T2 rows at 00:15.**
 
 - **The set.** 139 METAR T2 observations had a valid prior at 00:15. Run 5 assimilated all of them; D1 rejected one as an outlier, so n = 138. That observation (35.44° N, 94.80° W) had the same innovation in both runs, $d_b$ = −4.35 K, and the same $\sigma_o$ = 1.26 K, but a smaller spread in D1 (0.64 against 0.77 K). Its outlier threshold $3\sqrt{s_b^2 + \sigma_o^2}$ was therefore 4.24 K in D1 and 4.43 K in run 5: D1 rejected it, run 5 assimilated it. Over each run's own QC-0 set, this one observation would raise run 5's rms $d_a$ from 0.827 to 0.865 K and its $\sigma_{o,D}$ from 0.867 to 0.919 K, and D1's analysis would look 11 % closer instead of 7 %.
 - **rms $d_b$** = 0.977 K in D1: the square root of the mean, over the 138 observations, of $d_b^2$, where $d_b$ is the observed 2-m temperature minus the mean of D1's 50 prior members' 2-m temperature at the site. In run 5 (5 members) 0.985 K. The two forecasts fit the observations equally well: $\operatorname{mean}(d_b^2)$ = 0.955 and 0.970 K².
-- **spread** = 0.743 K in D1: the rms over the 138 observations of the prior members' standard deviation at the site; 0.765 K in run 5. The rms assigned error is 1.375 K (1.26 K, more near the boundary). For one isolated observation, the analysis would remove the fraction $k = s_b^2/(s_b^2 + \sigma_o^2)$ of the innovation (`obs_error_diagnostics.md` Sec. 4.1); averaged over the observations, $k$ = 0.24 in D1 and 0.23 in run 5.
+- **spread** = 0.743 K in D1: the rms over the 138 observations of the prior members' standard deviation at the site; 0.765 K in run 5. The rms assigned error is 1.375 K (1.26 K, more near the boundary). The isolated-observation gain $k = s_b^2/(s_b^2 + \sigma_o^2)$ (Sec. 3.1), the fraction of the innovation the analysis would remove if each observation were assimilated alone, averages 0.24 in D1 and 0.23 in run 5.
 - **rms $d_a$** = 0.766 K in D1 and 0.827 K in run 5: the same, after the analysis. The analysis took $\operatorname{mean}(d^2)$ from 0.955 to 0.587 K² in D1 (−39 %) and from 0.970 to 0.684 K² in run 5 (−30 %).
 - **The realized gain** $g$, the fraction of the innovation the analysis removed, $1 - \operatorname{mean}(d_a d_b)/\operatorname{mean}(d_b^2)$ (Sec. 3.5): 1 − 0.679 / 0.955 = 0.289 in D1, 1 − 0.752 / 0.970 = 0.225 in run 5. With about the same $k$, D1's analysis removed more than one isolated observation would (nearby observations of the same and other types pulled it further), run 5's about as much: the analysis step of Sec. 2 at work.
 - **Desroziers**: $\sigma_{o,D} = \sqrt{\operatorname{mean}(d_a d_b)}$ = √0.679 = 0.824 K in D1, √0.752 = 0.867 K in run 5. Same innovations, larger realized gain, smaller product (Eq. 2).
@@ -232,13 +233,71 @@ $$
 \tag{2}
 $$
 
-where $g_{\mathrm{opt}} = \sigma_b^2 / (\sigma_b^2 + \sigma_o^2)$ is the gain the true variances would give. Desroziers' estimate is right when the realized gain is the optimal one (`obs_error_diagnostics.md` Sec. 4.1–4.2), too high when it is smaller and too low when it is larger, by $(g_{\mathrm{opt}} - g)\operatorname{mean}(d_b^2)$, at most $\sigma_b^2$ (for $g \ge 0$). The realized gain departs from the optimal one for several reasons: assigned errors or spread that are off (`obs_error_diagnostics.md` Sec. 4.3), and in the EAKF the localization, the updates by nearby observations and the sampling-error correction of Sec. 2. For one isolated observation, $g$ is the single-observation gain $k = s_b^2/(s_b^2 + \sigma_o^2)$ of Sec. 4.1 there.
+where $g_{\mathrm{opt}} = \sigma_b^2 / (\sigma_b^2 + \sigma_o^2)$ is the gain the true variances would give. Desroziers' estimate is right when the realized gain is the optimal one (`obs_error_diagnostics.md` Sec. 4.1–4.2), too high when it is smaller and too low when it is larger, by $(g_{\mathrm{opt}} - g)\operatorname{mean}(d_b^2)$, at most $\sigma_b^2$ (for $g \ge 0$). The realized gain departs from the optimal one for several reasons: assigned errors or spread that are off (`obs_error_diagnostics.md` Sec. 4.3), and in the EAKF the localization, the updates by nearby observations and the sampling-error correction of Sec. 2. For an observation assimilated alone, $g$ is the isolated-observation gain $k = s_b^2/(s_b^2 + \sigma_o^2)$ (Sec. 3.1; `obs_error_diagnostics.md` Sec. 4.1).
 
 - At 00:15, on the observations both runs assimilated, the innovations are the same, and Desroziers' estimate is 1–13 % lower in D1 for every type (METAR T2 0.82 against 0.87 K), because D1's realized gain is larger (METAR T2: 0.29 against 0.225; worked example in Sec. 3.2).
 - Pooled, Desroziers' estimate falls by clearly more than the implied error for METAR U10 (−9 % against −3 %), the METAR altimeter (−11 % against −6 %), ACARS T (−7 % against −2 %) and reflectivity (−17 % against −6 %); for the other 11 types the two fall by amounts within 4 percentage points of each other.
 - Which run's estimate is nearer the truth depends on $g_{\mathrm{opt}}$, i.e. on the true prior error, which is unknown. If the spread were right ($\sigma_b^2 = s_b^2$), METAR T2 at 00:15 would have $g_{\mathrm{opt}}$ = 0.552 / 0.955 = 0.58 in D1 and 0.585 / 0.970 = 0.60 in run 5, far above both realized gains: both estimates too high, run 5's more. With assigned errors larger than the innovations support (Sec. 3.4), a realized gain below the optimal one is what to expect.
 
-**The direction of `obs_expansion.md` Sec. 5 holds at 50 members.** METAR T2's implied and Desroziers errors are 0.69–0.70 of the assigned error in D1 (≈ 0.95 K), mesonet T 0.33–0.34 and mesonet wind 0.48–0.61. The pilot's METAR ratios of Sec. 5 (T2 0.38–0.43) were relative to DART's default errors (Sec. 1); in kelvin, METAR T2's implied error is 1.03 K in the pilot (`obs_error_diagnostics.md` Sec. 4.3), 1.03 K in run 5 and 0.95 K in D1, and the ratio is higher now because the assigned error was lowered to 1.26 K after the pilot. Reflectivity's Desroziers estimate stays above the assigned 5.2 dBZ (6.8 dBZ in D1, over the observations both runs assimilated), clear air's far below its 5.35 dBZ (2.1 dBZ). One hour of one case, as in the pilot; no change to the errors is proposed here. Sec. 5 of `obs_expansion.md` already asked for a recheck on a longer run, by time of day, and D2's six hours could give it.
+**The direction of `obs_expansion.md` Sec. 5 holds at 50 members.** METAR T2's implied and Desroziers errors are 0.69–0.70 of the assigned error in D1 (≈ 0.95 K), mesonet T 0.33–0.34 and mesonet wind 0.48–0.61. The pilot's METAR ratios of Sec. 5 (T2 0.38–0.43) were relative to DART's default errors (Sec. 1); in kelvin, METAR T2's implied error is 1.03 K in the pilot (`obs_error_diagnostics.md` Sec. 4.3), 1.03 K in run 5 and 0.95 K in D1, and the ratio is higher now because the assigned error was lowered to 1.26 K after the pilot. Reflectivity's Desroziers estimate stays above the assigned 5.2 dBZ (6.8 dBZ in D1, over the observations both runs assimilated), clear air's far below its 5.35 dBZ (2.1 dBZ); Sec. 3.6 explains why reflectivity's numbers say little about its observation error. One hour of one case, as in the pilot; no change to the errors is proposed here. Sec. 5 of `obs_expansion.md` already asked for a recheck on a longer run, by time of day, and D2's six hours could give it.
+
+### 3.6 Reflectivity: why the implied error is three times the assigned one
+
+Reflectivity's implied ratio is 3.1 (Sec. 3.4): in D1, pooled, $\sqrt{291.5 - 22.8}$ = 16.4 dBZ against 5.24 dBZ assigned. By `obs_error_diagnostics.md` Eq. 2b the implied error holds the observation error, the prior error variance the spread misses, and the squared bias. For reflectivity it is almost all the last two. The numbers below are D1's, pooled over 00:15–01:00, over its QC 0 or 7 set (316,757 observations) unless said otherwise.
+
+**How the observations are chosen** (`scripts/da/mrms_to_obs_seq.py`, HRRRDAS settings):
+
+- precipitation observations only where MRMS has at least 10 dBZ (`--precip-dbz-thresh`), at every other grid point (5 km) and every third MRMS level;
+- clear-air observations only where MRMS has 0 dBZ or less, set to −10 dBZ, at 4.0 and 8.5 km and every sixth grid point (15 km);
+- the forward operator is floored at −10 dBZ (`apply_ref_limit_to_fwd_op = .true.`, `reflectivity_limit_fwd_op = -10.0` in `&obs_def_radar_mod_nml`); −10.0 dBZ is also the smallest prior member value in observation space.
+
+So a missed or misplaced storm gives a large positive $d_b$ in the precipitation type, while the opposite error, a forecast echo where MRMS has less than 10 dBZ, never enters this type; the clear-air type sees it only where MRMS has 0 dBZ or less, and only on two levels. The observed values are 10 dBZ and above (median 17.5 dBZ); the prior means reach down to the floor (median 10.6 dBZ).
+
+**Where the summed $d_b^2$ comes from** (the rows overlap):
+
+| observations | share of observations | share of summed $d_b^2$ |
+|---|---|---|
+| rejected as outliers (QC 7) | 30 % | 71 % |
+| prior mean below 10 dBZ | 49 % | 75 % |
+| above all 50 prior members | 54 % | 77 % |
+
+- **The bias**: $\operatorname{mean}(d_b)$ = +8.84 dBZ, 27 % of $\operatorname{mean}(d_b^2)$ = 291.5 dBZ². Without it the implied error would be 13.8 dBZ.
+- **The outliers**: mean $d_b$ +19.4 dBZ, rms $d_b$ 26.2 dBZ, rms spread 2.5 dBZ; 86,005 of the 96,017 have $d_b > 0$ (forecast too low). The assimilated observations: mean $d_b$ +4.2 dBZ, rms $d_b$ 11.0 dBZ, rms spread 5.5 dBZ.
+- **No forecast echo** (prior mean below 10 dBZ): rms $d_b$ 21.2 dBZ against an rms spread of 4.0 dBZ; 52 % of these observations are outliers.
+- **Outside the ensemble**: at 54 % of the observations the observed value is above all 50 prior members, at 10.6 % below all of them. These are the end bins of a rank histogram (here without observation-error noise added to the members).
+
+**Reading.** The implied error mostly measures prior error that the ensemble doesn't represent: storms missing or in the wrong place, in a quantity that is bounded below (the −10 dBZ floor) and far from Gaussian, so assumption (A3) of `obs_error_diagnostics.md` fails badly; plus a bias that the selection of the observations builds in. It is not an estimate of MRMS's error. One hour after the cold start the ensemble doesn't cover the observed echoes, which is the 6-h gate's spin-up question (`fulltest_steps.md` Sec. 0, `handoffs/2026-11-13_fulltest_d2_analysis.md`).
+
+**From the implied error to Desroziers' estimate** (D1, pooled; each value divided by the rms assigned error over its set, 5.24 and 5.23 dBZ):
+
+| estimate | observations | dBZ | ratio |
+|---|---|---|---|
+| implied | QC 0 or 7 | 16.4 | 3.13 |
+| implied | D1's QC 0 | 9.5 | 1.82 |
+| Desroziers | D1's QC 0 | 7.1 | 1.35 |
+
+(Over the observations assimilated in both runs, Sec. 3.4: 6.8 dBZ, ratio 1.29.) Dropping the outliers is the bigger step. The gain does the rest. From the definitions alone (Sec. 3.5 and `obs_error_diagnostics.md` Eq. 2), over one set,
+
+$$
+\sigma_{o,D}^2 = \sigma_{o,\mathrm{implied}}^2 - \left( g - \frac{\operatorname{mean}(s_b^2)}{\operatorname{mean}(d_b^2)} \right) \operatorname{mean}(d_b^2)
+\tag{3}
+$$
+
+so Desroziers' estimate falls below the implied error exactly when the realized gain is larger than $\operatorname{mean}(s_b^2)/\operatorname{mean}(d_b^2)$, the optimal gain if the spread were right. Over D1's assimilated reflectivity observations, $\operatorname{mean}(d_b^2)$ = 120.1 dBZ², $\operatorname{mean}(s_b^2)$ = 29.9 dBZ² and $\operatorname{mean}(d_a d_b)$ = 50.0 dBZ², so $g$ = 1 − 50.0 / 120.1 = 0.584 against 29.9 / 120.1 = 0.249, and Eq. 3 gives 90.2 − 0.335 × 120.1 = 50.0 dBZ².
+
+Per cycle, over the observations assimilated in both runs, the isolated-observation gain $k$ and the realized gain $g$ (Sec. 3.1):
+
+| time | $k$ D1 | $g$ D1 | $k$ run 5 | $g$ run 5 |
+|---|---|---|---|---|
+| 00:15 | 0.17 | 0.32 | 0.15 | 0.24 |
+| 00:30 | 0.32 | 0.51 | 0.29 | 0.39 |
+| 00:45 | 0.39 | 0.61 | 0.37 | 0.48 |
+| 01:00 | 0.43 | 0.68 | 0.43 | 0.55 |
+
+- $k$ grows over the hour as the reflectivity spread grows. $g$ is 1.6–1.9 times $k$ in D1 and 1.3–1.5 times in run 5.
+- $g > k$ because each radar observation has many neighbours seeing the same storm error: precipitation observations every 5 km and every third level, with the radar localization reaching zero at 18 km, so dozens of them update the state the forward operator reads at one observation's site. As an illustration, with $s_b$ = 3 dBZ and $\sigma_o$ = 5.24 dBZ one observation alone gets $k$ = 9 / (9 + 27.4) = 0.25, while four observations of the same point with independent errors act like one with a quarter of the error variance: 9 / (9 + 6.85) = 0.57. The same effect is behind ACARS T in `obs_error_diagnostics.md` Sec. 5.
+- Run 5's ratios are smaller: at 5 members the sampling-error correction damps the neighbours' contributions (Sec. 2).
+- By Eq. 2, a gain above the optimal one makes Desroziers' estimate too low, a gain below it too high. Here the optimal gain is unknown. With (A1) and (A2), $g_{\mathrm{opt}} = \sigma_b^2/\operatorname{mean}(d_b^2)$: it is at least 0.25 if the ensemble is underdispersive (the spread-based value; the 54 % of observations above all members say it is), and at most 1. The realized 0.58 can be on either side of it, and (A1) fails here anyway (the bias). So 6.8–7.1 dBZ is not a clean estimate of the radar error either.
 
 ## 4. Clear-air reflectivity
 
