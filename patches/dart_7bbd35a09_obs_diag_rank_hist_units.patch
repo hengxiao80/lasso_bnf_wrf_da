@@ -1,0 +1,19 @@
+diff --git a/assimilation_code/programs/obs_diag/threed_sphere/obs_diag.f90 b/assimilation_code/programs/obs_diag/threed_sphere/obs_diag.f90
+index 725dd07a0..bc21ffb0b 100644
+--- a/assimilation_code/programs/obs_diag/threed_sphere/obs_diag.f90
++++ b/assimilation_code/programs/obs_diag/threed_sphere/obs_diag.f90
+@@ -782,7 +782,13 @@ ObsFileLoop : do ifile=1, num_input_files
+ 
+          if ( create_rank_histogram ) then
+             call get_obs_values(observation, copyvals)
+-            rank_histogram_bin = Rank_Histogram(copyvals, obs_index, obs_error_variance )
++            ! Local patch (bnf_wrf_da): copyvals are in the units of the obs_seq file, but
++            ! obs_error_variance was multiplied by scale_factor(flavor)**2 above (plotting
++            ! units, e.g. specific humidity in g/kg), so the noise added to the members was
++            ! scale_factor times too large. Give Rank_Histogram the variance in the units of
++            ! copyvals; unchanged where scale_factor = 1.
++            rank_histogram_bin = Rank_Histogram(copyvals, obs_index, &
++                                 obs_error_variance / scale_factor(flavor)**2 )
+          endif
+ 
+          ! We have Nregions of interest.

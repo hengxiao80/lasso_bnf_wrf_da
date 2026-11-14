@@ -1,0 +1,33 @@
+# &obs_diag_nml template for scripts/da/run_obs_diag.sh, which appends it, with the @...@ fields filled in, to a
+# copy of the run's filter input.nml (the other modules' namelists come from there).
+# Time bins: 15 min wide, centred on the analysis times, so each bin [t - 449 s, t + 450 s] is the cycle's
+#   observation window (t - 450 s, t + 450 s].
+# hlevel_edges: one bin per MRMS height (500, 1250, 2000, 2750, 4000, 5500, 7000, 8500, 11000 m), each height
+#   at its bin's centre (radar and clear-air reflectivity, vertical coordinate height).
+# plevel_edges: 100-hPa layers, centres 1000 to 200 hPa (ACARS, vertical coordinate pressure; 187-999 hPa in D2).
+# Surface types (METAR, mesonet) have one level. One region: the whole domain.
+# @TRUSTED@: 'null' (selection assim: DART's default, prior over QC 0-3, posterior over QC 0-1) or every type
+#   in the files (selection all: QC 7 added to both). @OUTLIERS@: .false. (assim) or .true. (all).
+&obs_diag_nml
+   obs_sequence_name     = '',
+   obs_sequence_list     = 'obs_seq_list.txt',
+   first_bin_center      = @FIRST@,
+   last_bin_center       = @LAST@,
+   bin_separation        = 0, 0, 0, 0, 15, 0,
+   bin_width             = 0, 0, 0, 0, 15, 0,
+   time_to_skip          = 0, 0, 0, 0,  0, 0,
+   max_num_bins          = 1000,
+   plevel_edges          = 1050, 950, 850, 750, 650, 550, 450, 350, 250, 150,
+   hlevel_edges          = 125, 875, 1625, 2375, 3125, 4875, 6125, 7875, 9125, 12875,
+   Nregions              = 1,
+   lonlim1               = 0.0,
+   lonlim2               = 360.0,
+   latlim1               = -90.0,
+   latlim2               = 90.0,
+   reg_names             = 'Domain',
+   trusted_obs           = @TRUSTED@,
+   create_rank_histogram = .true.,
+   outliers_in_histogram = @OUTLIERS@,
+   use_zero_error_obs    = .false.,
+   verbose               = .true.,
+   /

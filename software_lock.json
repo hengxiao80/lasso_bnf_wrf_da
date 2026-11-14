@@ -2,12 +2,13 @@
   "host": {
     "hostname": "cirrus-login1.ccs.ornl.gov",
     "uname": "Linux cirrus-login1.ccs.ornl.gov 4.18.0-553.158.1.el8_10.x86_64 #1 SMP Sun Aug 23 20:58:55 EDT 2026 x86_64 x86_64 x86_64 GNU/Linux",
-    "generated_at_utc": "2026-10-14T20:09:46.289650Z",
+    "generated_at_utc": "2026-11-13T23:49:17.562394Z",
     "generated_by": "audit_configuration.py"
   },
   "modules": {
     "env_script": "scripts/env_wrf.sh",
     "modules_loaded": [
+      "Core/A100",
       "intel/20.0.4",
       "openmpi/4.0.4",
       "netcdf-wrf/0.1",
@@ -15,6 +16,7 @@
       "jasper"
     ],
     "modules_resolved": {
+      "Core/A100": "/sw/cirrus/nsp/modulefiles/Core/A100.lua",
       "intel/20.0.4": "/sw/cirrus/spack-envs/base/modules/site/Core/intel/20.0.4.lua",
       "openmpi/4.0.4": "/sw/cirrus/spack-envs/base/modules/spack/linux-rhel8-x86_64/intel/20.0.4/openmpi/4.0.4.lua",
       "netcdf-wrf/0.1": "/sw/cirrus/modulefiles/core/netcdf-wrf/0.1.lua",
@@ -381,14 +383,17 @@
         "working_tree_dirty": true,
         "dirty_files": [
           "M assimilation_code/modules/utilities/types_mod.f90",
+          " M assimilation_code/programs/obs_diag/threed_sphere/obs_diag.f90",
           " M models/wrf/WRF_BC/pert_wrf_bc.f90",
           " M models/wrf/WRF_BC/update_wrf_bc.f90",
           " M observations/obs_converters/MADIS/convert_madis_acars.f90",
           " M observations/obs_converters/MADIS/convert_madis_metar.f90",
           " M observations/obs_converters/MADIS/convert_madis_rawin.f90",
           " M observations/obs_converters/obs_error/ncep_obs_err_mod.f90",
+          "?? models/wrf/work/obs_diag.pre_rank_hist_fix",
           "?? models/wrf/work/quickbuild.log",
           "?? models/wrf/work/quickbuild_fp_precise.log",
+          "?? models/wrf/work/quickbuild_obs_diag_rank_hist_fix.log",
           "?? models/wrf/work/quickbuild_wrf_bc_patch.log",
           "?? observations/obs_converters/MADIS/work/convert_madis_mesonet.pre_mesonet_errors",
           "?? observations/obs_converters/MADIS/work/convert_madis_metar.pre_metar_errors",
@@ -510,9 +515,9 @@
           "is_symlink": false,
           "resolved_path": "/gpfs/wolf2/arm/cli120/proj-shared/hengxiao80/software/DART/models/wrf/work/obs_diag",
           "size_bytes": 13765800,
-          "mtime_utc": "2026-10-02T02:21:35.102692Z",
-          "sha256": "48426f45695f97f70c2c80ef2c643bf4af780cf49dce584351121db4034c14db",
-          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=26efb391f4584a473a8ea2b0afd208c9092e2b75, not stripped"
+          "mtime_utc": "2026-11-13T23:41:18.504855Z",
+          "sha256": "42863d458974dc9c318aef56cc2aa37b23d0f564b37e61707f71872934e1022c",
+          "file_type": "ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, BuildID[sha1]=4d6e3ef0ecf4604a852311735c1675d0a5364d4d, not stripped"
         },
         {
           "path": "models/wrf/work/obs_selection",
@@ -689,6 +694,11 @@
   },
   "local_patches": [
     {
+      "file": "dart_7bbd35a09_flavor5_root_choice.patch",
+      "sha256": "7cb23ff742a2d18a8e4b0b14a08bb1ecc93e130e31e0b2b8e837a069b2b35e9f",
+      "size_bytes": 1539
+    },
+    {
       "file": "dart_7bbd35a09_madis_acars_wvss_humidity.patch",
       "sha256": "e9c1bc51207d2f65110acf6f66b7f1b35669d47e6c4ebee68075b3d8401e42c9",
       "size_bytes": 3658
@@ -712,6 +722,11 @@
       "file": "dart_7bbd35a09_mkmf_fp_model_precise.patch",
       "sha256": "e1630fc67867cca294ce4b2e1be77b9e8be69fa936ddb380a061375ee624c1a9",
       "size_bytes": 357
+    },
+    {
+      "file": "dart_7bbd35a09_obs_diag_rank_hist_units.patch",
+      "sha256": "ecc6c4e5b428a599030823180668ec79d612bfee07c4460f54191391dcd58e9c",
+      "size_bytes": 1212
     },
     {
       "file": "dart_7bbd35a09_types_mod_r8_as_r4.patch",
