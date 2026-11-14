@@ -311,6 +311,12 @@ Each run is a production run: the user's go-ahead before it, even after a succes
 - Longest times for the 30-min limits: WRF task 368 s, filter job 7.0 min.
 
 **D3. 12 h**: the state at the start of the LES window.
+- **Ran 2026-11-13** (user's go-ahead; same command with `202505200615 202505201200`; at the 6-h gate the user kept everything, no thinning yet, and 2 nodes per member; the free ensemble and the spin-up variant would be separate runs). Chain 17:49:26 → 00:18:48 UTC (11-14), **6 h 29 min**, no queue waits: every filter job and every array's first task started when it became eligible (the later tasks of each array waited inside it for nodes, 306–335 s, 611 s at 06:15). 24 WRF arrays (1,200 tasks) and 25 filter jobs (24 forty-node jobs and the 1-node final check 1210601), all `COMPLETED`. All 24 cycles `complete`, `check_cycle.py` passed for each ("all checks passed"), no retries, no `ERROR` in any `cycle.log`, no CFL lines in the 1,200 segments.
+- WRF: arrays 10.2–11.4 min (mean 10.7) from 06:30 on, with 27–29 members at once (40 at once still not measured); A(06:15) 15.3 min: only 24 members ran at once (45 `batch_all` nodes were idle at the submission, against 59 in D1 and D2), so members 49 and 50 ran in a third wave. Tasks 295–377 s (D2: 296–368 s).
+- Filter jobs: 4.7–6.4 min, mean 5.5 (D2: 5.3–7.0, mean 5.9); from `cycle.log`, filter 143–194 s (mean 164; D2: 167–223, mean 189), whole step 278–382 s (mean 326; D2: 316–413, mean 350). The previous cycle's check never delayed a 40-node job; alone on the final job's node it took 74 s. A cycle took 15.3–17.7 min (mean 16.0) from one chain submission to the next, except the first full one, 20.0 min (A(06:15) above).
+- Disk (`du`, GB = 10⁹): `output_conv_refl_f2/` 26,586 GB (D3's cycles 543–556 GB each, 13,183 GB in all), as predicted; `run_conv_refl_f2/` 825 GB.
+- **Cost**: 294.4 node-hours (WRF 206.9, filter jobs 87.5), 12.3 per cycle (D2: 12.6).
+- Longest times for the 30-min limits: WRF task 377 s, filter job 6.4 min.
 
 **D4. 30 h**, to 05-21 06Z.
 
